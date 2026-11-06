@@ -271,3 +271,66 @@ say who drives.
 - **`luna-bridge: command not found`**: `~/.local/bin` is not on your
   `PATH` yet — add it (the installer prints the exact line), or call
   the command by full path: `~/.local/bin/luna-bridge status`.
+
+## Appendix: test coverage in detail
+
+This is the full breakdown behind the summary in README.md ("Testing").
+On a machine without Muse Code, the suite uses a fake `muse` executable:
+
+```sh
+sh test/run-tests.sh   # 217 checks: health, auth, upload, jobs, model/effort, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, luna-bridge CLI, --foreground
+```
+
+What is tested: health (no auth), 401 on missing/wrong token, upload (201,
+file on disk, traversal sanitized), job lifecycle (create → done, output
+contains the fake run lines and the prompt), failing job (exit 1), cancel of
+a slow job (SIGTERM to the process group), mode get/set + bad mode → 400,
+bad input → 400 (empty prompt, missing workdir, attachment outside inbox),
+unknown job → 404, job list, model/effort controls (per-run passthrough to
+the `muse` argv for jobs and sessions, every effort tier accepted, bad
+effort/model → 400, `meta.json` records the effective values, config
+`default_model`/`default_effort` apply with per-request override), plus
+shared sessions (real tmux + fake muse in interactive mode):
+auth/validation 401s and 400s, create (201, `luna-<id>` name, attach
+command, `alive`, meta.json on disk), pane read with the idle hint, input
+typed into the pane and echoed back, kill (dead, pane → 404, tmux session
+really gone), and survival across a bridge restart (still listed, still
+alive, pane still readable; job/session model/effort survive from disk).
+Session tests are skipped with a note on machines without tmux.
+Transport binding is covered twice: unit checks of the pure
+`resolveBindHosts`/`detectLanIp`/`isValidBindHost` functions exported
+from `server.js` (every `bind_mode`, with and without a detected
+Tailscale/LAN IP, the legacy no-`bind_mode` behaviour, loud failures),
+and end-to-end server spawns with a fake `tailscale` CLI on PATH
+(`localhost`, `auto` with/without a Tailscale IP, `tailscale` only,
+`tailscale`-without-IP and `custom`-without/invalid-`bind_host`
+failing at startup, the plain-language startup log, and that the log
+never contains the token). The fake CLI reports the machine's LAN IP
+as its "Tailscale IP" so the address is really bindable; on a machine
+with no LAN IP those two e2e cases are skipped with a note.
+Keep-awake is covered twice as well: unit checks of the exported
+`startKeepAwake`/`stopKeepAwake` with an injected fake spawn (spawns
+`caffeinate -i -w <pid>` only when enabled and only on macOS, never
+crashes when spawn fails or the child errors, shutdown kills the
+child), and — on macOS — an end-to-end spawn with a fake `caffeinate`
+on PATH (spawned with the server's pid when `keep_awake` is true, never
+when off, gone after the server is terminated). The `luna-bridge` CLI
+is tested against a fake `launchctl`/`curl` on PATH with a temp `HOME`
+(the real launchd agent is never touched): start/stop/restart/status
+including already-running/stopped idempotence, the status pid + health
+report and its non-zero exits, usage errors, and the not-installed
+hint. Foreground mode is covered on both surfaces: `parseArgs` unit
+checks (no args = background default, `--foreground` on, unknown flag
+throws), `node server.js --help`/`--bogus` exit codes, an end-to-end
+`node server.js --foreground` run (health answers, the process stays
+attached until SIGINT, the startup log — including its "foreground
+mode" line — lands on stdout and not stderr), and the CLI's
+`foreground` verb against a fake `node` (execs `server.js
+--foreground` when the agent is stopped, refuses with a
+"stop it first" message while the agent is loaded).
+
+What is NOT tested here (needs a real setup): the real `muse exec`
+(its flags are documented in README.md from Meta's docs, not from a live
+binary), binding to a real Tailscale address (the suite uses a fake
+`tailscale` CLI reporting a bindable local address), and an end-to-end
+curl-through-tunnel path from a remote client to the Mac.
