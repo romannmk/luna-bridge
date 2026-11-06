@@ -1,0 +1,10 @@
+# luna-bridge: never commit runtime state or secrets.
+config.json
+token
+.env
+data/
+inbox/
+jobs/
+logs/
+*.log
+.DS_Store
