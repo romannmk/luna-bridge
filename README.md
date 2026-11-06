@@ -11,7 +11,7 @@ A tiny, token-gated HTTP bridge that runs your terminal coding agent on your own
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 <a href="SETUP.md"><img src="https://img.shields.io/badge/platform-macOS-000000.svg?logo=apple&logoColor=white" alt="Platform: macOS"></a>
 <a href="SETUP.md"><img src="https://img.shields.io/badge/node-%E2%89%A518-339933.svg?logo=node.js&logoColor=white" alt="Node ≥ 18"></a>
-<a href="#testing"><img src="https://img.shields.io/badge/tests-217%20checks%20passing-brightgreen.svg" alt="Tests: 217 checks passing"></a>
+<a href="#testing"><img src="https://img.shields.io/badge/tests-260%20checks%20passing-brightgreen.svg" alt="Tests: 260 checks passing"></a>
 </p>
 
 <p>
@@ -382,6 +382,7 @@ example.
 | `bind_host` | `null` | IP/hostname to listen on; used (and required) by `bind_mode: "custom"`. Legacy configs with no `bind_mode` key keep the old behaviour (Tailscale IP if detected, else `bind_host`, plus 127.0.0.1) |
 | `data_dir` | `<server-dir>/data` | Runtime data: `inbox/` (uploads), `jobs/`, `sessions/` |
 | `default_workdir` | `null` | Working directory for jobs that omit `workdir` — set it (e.g. your main project dir) |
+| `allowed_workdirs` | `null` | Optional array of absolute paths (e.g. `["/Users/you/Projects"]`). When set and non-empty, `POST /jobs` and `POST /sessions` reject (403) any `workdir` — including the default — that is not equal to or inside one of these dirs, after `~` expansion, `..` normalization, and symlink resolution. `null`/absent/empty = no restriction. Start directory only: see [Security model](#security-model) |
 | `token` | `null` | Bearer [REDACTED] `null` = env `LUNA_BRIDGE_TOKEN`, else the token file, else generate one on first run |
 | `token_file` | `~/.config/luna-bridge/token` | Where a generated token is stored (0600) |
 | `muse_bin` | `"muse"` | Agent CLI binary (Muse Code today; a full path or wrapper script also works). Resolved via `which` at startup, logged |
@@ -427,6 +428,17 @@ Full policy and private reporting: [SECURITY.md](SECURITY.md).
 - **Input validation:** job ids, paths, modes, and sizes are validated;
   attachments must live under the inbox dir; uploads are sanitized to a
   basename (no path traversal); anything unexpected is a 400.
+- **Working-directory allowlist (optional):** set `allowed_workdirs`
+  (array of absolute paths) to confine where jobs and sessions may
+  *start*: both `POST /jobs` and `POST /sessions` then reject with
+  `403` any `workdir` — including `default_workdir` — outside the
+  listed folders, after expanding `~`, normalizing `..`, and resolving
+  symlinks. Absent or empty means no restriction (the original
+  behaviour). **Honest limitation:** this guards the start directory
+  only. The agent process still runs as your macOS user and can `cd`
+  elsewhere inside a session; true confinement would need OS-level
+  sandboxing (`sandbox-exec` or a separate user) and is out of scope
+  here.
 - **Logging:** requests are logged (method, path, job id). Prompts are
   never logged in full, the token never at all, in either mode.
 - **Revocation:** stop the bridge (`luna-bridge stop`, or
@@ -462,12 +474,15 @@ confirm the flags against your installed Muse Code version (see
 ## Testing
 
 ```sh
-sh test/run-tests.sh   # 217 checks, end-to-end with a fake `muse` + curl (no Muse Code needed)
+sh test/run-tests.sh   # 260 checks, end-to-end with a fake `muse` + curl (no Muse Code needed)
 ```
 
 Covered: health/auth (401s), upload + traversal sanitizing, job lifecycle
 incl. failing jobs and process-group cancel, mode get/set and 400s,
-model/effort passthrough to the agent argv, shared sessions against real
+model/effort passthrough to the agent argv, the `allowed_workdirs`
+allowlist (unit + end-to-end: inside accepted, outside/`..`/symlink
+escapes rejected with 403, unset = no restriction), shared sessions
+against real
 tmux (create, pane, input, kill, survival across a bridge restart),
 `bind_mode` transport binding (unit + end-to-end with a fake `tailscale`
 CLI), keep-awake (unit + end-to-end with a fake `caffeinate`), the

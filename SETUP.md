@@ -75,6 +75,14 @@ Edit `config.json` (it is gitignored — it never leaves your machine):
   only if that is the exposure you want.
 - `default_workdir`: the directory jobs run in when the client does not
   specify one, e.g. `/Users/you/Projects/my-app`.
+- `allowed_workdirs`: optional array of absolute paths, e.g.
+  `["/Users/you/Projects"]`. When set and non-empty, jobs and sessions
+  may only *start* in (or under) one of these dirs — anything else is
+  rejected with 403, including a `default_workdir` outside the list.
+  Absent/empty = no restriction. This guards the start directory only;
+  the agent still runs as your user and can `cd` elsewhere inside a
+  session (see "Security model" in README.md). Recommended: your
+  projects folder.
 - `mode`: `"unrestricted"` is the shipped default. It runs tasks with no
   approval prompts and no sandbox — keep it only if that is what you want
   (see "Security model" in README.md).
@@ -278,7 +286,7 @@ This is the full breakdown behind the summary in README.md ("Testing").
 On a machine without Muse Code, the suite uses a fake `muse` executable:
 
 ```sh
-sh test/run-tests.sh   # 217 checks: health, auth, upload, jobs, model/effort, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, luna-bridge CLI, --foreground
+sh test/run-tests.sh   # 260 checks: health, auth, upload, jobs, model/effort, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, luna-bridge CLI, --foreground, allowed_workdirs
 ```
 
 What is tested: health (no auth), 401 on missing/wrong token, upload (201,
@@ -297,6 +305,14 @@ typed into the pane and echoed back, kill (dead, pane → 404, tmux session
 really gone), and survival across a bridge restart (still listed, still
 alive, pane still readable; job/session model/effort survive from disk).
 Session tests are skipped with a note on machines without tmux.
+The `allowed_workdirs` allowlist is covered twice too: unit checks of
+the exported `isWorkdirAllowed`/`normalizeAllowedWorkdirs`/
+`resolveWorkdirPath` (unset/empty = no restriction, equal/inside
+accepted, outside, sibling-prefix, `..` escapes and symlink escapes
+rejected, `~` expansion, malformed config throws) and end-to-end
+server spawns (jobs and sessions inside accepted; outside, `..`, and
+symlink escapes → 403; a `default_workdir` outside the list → 403;
+the unset main server still accepts any workdir).
 Transport binding is covered twice: unit checks of the pure
 `resolveBindHosts`/`detectLanIp`/`isValidBindHost` functions exported
 from `server.js` (every `bind_mode`, with and without a detected

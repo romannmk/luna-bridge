@@ -35,6 +35,12 @@
  *   the local config sets `keep_awake: true` — never from a request.
  * - Prompts may contain private task text: they are never logged (only a
  *   short preview at most), and the token is never logged.
+ * - Optional `allowed_workdirs`: when set and non-empty, POST /jobs and
+ *   POST /sessions reject (403) any start directory outside the listed
+ *   folders. This guards the START directory only — the agent still runs
+ *   as the macOS user and can `cd` elsewhere inside a session. True
+ *   confinement would need OS-level sandboxing (sandbox-exec / a separate
+ *   user) and is out of scope here. Unset/empty = no restriction.
  *
  * Config: config.json next to this file (see config.example.json). The token
  * comes from LUNA_BRIDGE_TOKEN env, config.json `token`, or a token file
@@ -118,6 +124,15 @@ const DEFAULTS = {
   // Default working directory for jobs when the request omits workdir.
   // No hardcoded user-specific default here on purpose: set it in config.json.
   default_workdir: null,
+  // Working-directory allowlist: array of absolute paths (e.g.
+  // ["/Users/you/Projects"]). When set and non-empty, POST /jobs and
+  // POST /sessions reject with 403 any workdir (including the default)
+  // that is not equal to or inside one of these dirs, after `~`
+  // expansion, `..` normalization, and symlink resolution. null/absent/
+  // empty = no restriction (the pre-allowlist behaviour). NOTE: this
+  // guards the START directory only; the agent runs as this user and
+  // can `cd` elsewhere inside a session (see README "Security model").
+  allowed_workdirs: null,
   // Path to the muse binary ("muse" = resolve via PATH at startup).
   muse_bin: 'muse',
   // Path to the tmux binary ("tmux" = resolve via PATH at startup).
@@ -190,6 +205,14 @@ function loadConfig() {
   cfg.sessionsDir = path.join(cfg.dataDir, 'sessions');
   cfg.tokenFile = cfg.token_file
     || path.join(os.homedir(), '.config', 'luna-bridge', 'token');
+  // Validate the workdir allowlist eagerly: a malformed security setting
+  // must fail loudly at startup, never silently disable the restriction.
+  try {
+    cfg.allowedWorkdirs = normalizeAllowedWorkdirs(cfg.allowed_workdirs);
+  } catch (err) {
+    console.error(`[config] ${err.message} Fix allowed_workdirs in ${configPath} (array of absolute paths, or remove it for no restriction).`);
+    process.exit(1);
+  }
   return cfg;
 }
 
@@ -300,6 +323,117 @@ function sanitizeFilename(name) {
   // Basename only, no path traversal; keep it filesystem-safe.
   const base = path.basename(String(name || '').trim()).replace(/[^A-Za-z0-9._-]+/g, '_');
   return base.replace(/^\.+/, '').slice(0, 200) || 'file';
+}
+
+// ---------------------------------------------------------------------------
+// Working-directory allowlist (allowed_workdirs)
+// ---------------------------------------------------------------------------
+//
+// Pure helpers (exported for the test suite). `opts` may inject
+// { homeDir, cwd, realpathFn } so the contract is testable without a real
+// filesystem; by default realpathFn is fs.realpathSync with a lexical
+// fallback for paths that do not exist (yet).
+
+function defaultRealpath(p) {
+  try { return fs.realpathSync(p); } catch { return p; }
+}
+
+// Expand a leading `~` / `~/` against the user's home directory.
+// (`~user` is not expanded — it stays a literal relative name.)
+function expandHomeDir(p, homeDir = os.homedir()) {
+  if (p === '~') return homeDir;
+  if (p.startsWith('~/') || p.startsWith(`~${path.sep}`)) return path.join(homeDir, p.slice(2));
+  return p;
+}
+
+// Canonical form of a requested workdir: `~` expanded, made absolute,
+// `.`/`..` normalized (path.resolve), then symlinks resolved when the
+// path exists. Throws on a non-string/empty input.
+function resolveWorkdirPath(input, opts = {}) {
+  if (typeof input !== 'string' || input.trim() === '') {
+    throw new Error('workdir must be a non-empty string');
+  }
+  const homeDir = opts.homeDir || os.homedir();
+  const cwd = opts.cwd || process.cwd();
+  const realpathFn = opts.realpathFn || defaultRealpath;
+  const expanded = expandHomeDir(input.trim(), homeDir);
+  return realpathFn(path.resolve(cwd, expanded));
+}
+
+// True when `candidate` equals `dir` or lives inside it. Both must
+// already be canonical (resolveWorkdirPath). The separator boundary
+// keeps a sibling like /srv/ProjectsEvil out of /srv/Projects.
+function isPathInsideDir(candidate, dir) {
+  if (candidate === dir) return true;
+  const prefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
+  return candidate.startsWith(prefix);
+}
+
+// Canonical allowed dirs from the raw config value. Unset (null/
+// undefined) or [] -> [] (no restriction). Anything malformed throws:
+// a broken security setting must fail loudly, never fail open.
+function normalizeAllowedWorkdirs(allowed, opts = {}) {
+  if (allowed === undefined || allowed === null) return [];
+  if (!Array.isArray(allowed)) {
+    throw new Error('allowed_workdirs must be an array of absolute paths');
+  }
+  const homeDir = opts.homeDir || os.homedir();
+  const out = [];
+  for (const entry of allowed) {
+    if (typeof entry !== 'string' || entry.trim() === '') {
+      throw new Error(`allowed_workdirs entries must be non-empty strings (got ${JSON.stringify(entry)})`);
+    }
+    if (!path.isAbsolute(expandHomeDir(entry.trim(), homeDir))) {
+      throw new Error(`allowed_workdirs entries must be absolute paths (got ${JSON.stringify(entry)})`);
+    }
+    const canonical = resolveWorkdirPath(entry, opts);
+    if (!out.includes(canonical)) out.push(canonical);
+  }
+  return out;
+}
+
+// The allowlist check itself: an empty/unset list allows any workdir
+// (backward compatibility); otherwise the canonical workdir must be
+// equal to or inside one of the canonical allowed dirs.
+function isWorkdirAllowed(workdir, allowed, opts = {}) {
+  const dirs = normalizeAllowedWorkdirs(allowed, opts);
+  if (dirs.length === 0) return true;
+  const candidate = resolveWorkdirPath(workdir, opts);
+  return dirs.some((dir) => isPathInsideDir(candidate, dir));
+}
+
+// Shared POST /jobs + POST /sessions workdir resolution: request value,
+// else config default_workdir, else the server's cwd. Returns
+// { workdir } or { status, error } — 400 for a bad/missing directory,
+// 403 when allowed_workdirs rejects it (checked before existence, so
+// an outside path is refused without probing it; the default workdir
+// goes through the same check).
+function resolveRequestWorkdir(requested) {
+  let raw = requested;
+  if (raw === undefined || raw === null || raw === '') {
+    raw = config.default_workdir || process.cwd();
+  }
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return { status: 400, error: 'workdir must be a non-empty string' };
+  }
+  const workdir = resolveWorkdirPath(raw);
+  let allowed;
+  try {
+    allowed = normalizeAllowedWorkdirs(config.allowed_workdirs);
+  } catch (err) {
+    // Unreachable in practice (validated at startup): fail closed.
+    return { status: 403, error: `workdir rejected: ${err.message}` };
+  }
+  if (allowed.length > 0 && !allowed.some((dir) => isPathInsideDir(workdir, dir))) {
+    return { status: 403, error: `workdir is outside allowed_workdirs: ${workdir}` };
+  }
+  try {
+    const st = fs.statSync(workdir);
+    if (!st.isDirectory()) return { status: 400, error: 'workdir is not a directory' };
+  } catch {
+    return { status: 400, error: 'workdir does not exist' };
+  }
+  return { workdir };
 }
 
 // ---------------------------------------------------------------------------
@@ -1207,14 +1341,9 @@ async function handleCreateJob(req, res) {
   if (Buffer.byteLength(prompt) > config.max_prompt_bytes) {
     return sendError(res, 400, 'prompt too large');
   }
-  let workdir = body.workdir || config.default_workdir || process.cwd();
-  workdir = path.resolve(workdir);
-  try {
-    const st = fs.statSync(workdir);
-    if (!st.isDirectory()) return sendError(res, 400, 'workdir is not a directory');
-  } catch {
-    return sendError(res, 400, 'workdir does not exist');
-  }
+  const wd = resolveRequestWorkdir(body.workdir);
+  if (wd.error) return sendError(res, wd.status, wd.error);
+  const workdir = wd.workdir;
   const attachments = [];
   if (body.attachments !== undefined) {
     if (!Array.isArray(body.attachments)) {
@@ -1281,14 +1410,9 @@ async function handleCreateSession(req, res) {
   if (Buffer.byteLength(prompt) > config.max_prompt_bytes) {
     return sendError(res, 400, 'prompt too large');
   }
-  let workdir = body.workdir || config.default_workdir || process.cwd();
-  workdir = path.resolve(workdir);
-  try {
-    const st = fs.statSync(workdir);
-    if (!st.isDirectory()) return sendError(res, 400, 'workdir is not a directory');
-  } catch {
-    return sendError(res, 400, 'workdir does not exist');
-  }
+  const wd = resolveRequestWorkdir(body.workdir);
+  if (wd.error) return sendError(res, wd.status, wd.error);
+  const workdir = wd.workdir;
   // Per-session mode override (validated against the same allowlist as jobs).
   let mode;
   if (body.mode !== undefined) {
@@ -1534,6 +1658,11 @@ async function main(opts = {}) {
   }
   log(`[env] mode: ${config.mode} (flags: ${modeFlags(config.mode).join(' ') || '(defaults)'})`);
   log(`[env] data dir: ${config.dataDir}`);
+  if (config.allowedWorkdirs.length > 0) {
+    log(`[env] allowed_workdirs: ${config.allowedWorkdirs.join(', ')} (jobs/sessions must start inside one of these; start directory only — see README)`);
+  } else {
+    log('[env] allowed_workdirs: not set (no workdir restriction)');
+  }
   log(`[net] bind_mode: ${bind.mode}`);
 
   // One http.Server per bind address: calling listen() twice on the same
@@ -1583,9 +1712,14 @@ module.exports = {
   BIND_MODES,
   USAGE,
   detectLanIp,
+  expandHomeDir,
+  isPathInsideDir,
   isValidBindHost,
+  isWorkdirAllowed,
+  normalizeAllowedWorkdirs,
   parseArgs,
   resolveBindHosts,
+  resolveWorkdirPath,
   startKeepAwake,
   stopKeepAwake,
 };

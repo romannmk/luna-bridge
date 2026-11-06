@@ -320,6 +320,7 @@ when a cap is set.
 | `bind_host` | `null` | Explicit IP/hostname; required when `bind_mode` is `custom` |
 | `data_dir` | `<server-dir>/data` | Holds `inbox/`, `jobs/`, `sessions/` |
 | `default_workdir` | `null` | Working directory for jobs that omit `workdir` |
+| `allowed_workdirs` | `null` | Optional array of absolute paths; when set and non-empty, jobs/sessions may only start in/under these dirs (else 403). Start directory only — the agent runs as your user and can `cd` elsewhere; see "Security" |
 | `default_model`, `default_effort` | `null` | Default model and effort tier |
 | `token` | `null` | Bearer token; `null` = env `LUNA_BRIDGE_TOKEN`, else the token file, else generate |
 | `token_file` | `~/.config/luna-bridge/token` | Where a generated token is stored (0600) |
@@ -383,6 +384,14 @@ access control.
   (allowlist), directly with an argv array and no shell — arbitrary
   commands from requests cannot run by design. The only other processes
   are tmux (shared sessions) and, opt-in on macOS, `caffeinate`.
+- **Workdir allowlist:** with `allowed_workdirs` set (array of
+  absolute paths), `POST /jobs` and `POST /sessions` reject (403) any
+  start directory outside the list — including the default — after
+  `~` expansion, `..` normalization, and symlink resolution. Absent
+  or empty = no restriction. Limitation: this guards the start
+  directory only; the agent still runs as your macOS user and can
+  `cd` elsewhere inside a session. True confinement would need
+  OS-level sandboxing (`sandbox-exec` / a separate user).
 - **Validation:** attachments are accepted only from `data/inbox/`;
   filenames are sanitized to a basename (no path traversal); upload,
   prompt, and JSON sizes are capped; an invalid `model` / `effort` /

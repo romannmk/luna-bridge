@@ -1012,6 +1012,167 @@ else
 fi
 sleep 0.3
 
+# --- 17. allowed_workdirs (unit, via server.js exports) -----------------------
+# Pure resolver contract: unset/empty = no restriction (back-compat); when set,
+# the workdir must be equal to or inside an allowed dir after `~` expansion,
+# `..` normalization, and symlink resolution (realpathFn injected here).
+cat > "$TMP/workdir-unit.js" <<'WDEOF'
+'use strict';
+const srv = require(process.argv[2]);
+let pass = 0; let fail = 0;
+function eq(name, got, expected) {
+  if (got === expected) { pass += 1; console.log(`PASS: workdir unit: ${name}`); }
+  else { fail += 1; console.log(`FAIL: workdir unit: ${name} (expected [${expected}], got [${got}])`); }
+}
+function throws(name, fn, needle) {
+  try { fn(); fail += 1; console.log(`FAIL: workdir unit: ${name} (did not throw)`); }
+  catch (e) {
+    if (e.message.includes(needle)) { pass += 1; console.log(`PASS: workdir unit: ${name}`); }
+    else { fail += 1; console.log(`FAIL: workdir unit: ${name} (threw [${e.message}], missing [${needle}])`); }
+  }
+}
+if (typeof srv.isWorkdirAllowed !== 'function' || typeof srv.normalizeAllowedWorkdirs !== 'function'
+  || typeof srv.resolveWorkdirPath !== 'function') {
+  eq('server.js exports workdir helpers', 'missing', 'functions');
+  console.log(`WDUNIT_PASS=${pass} WDUNIT_FAIL=${fail}`);
+  process.exit(1);
+}
+eq('server.js exports workdir helpers', 'functions', 'functions');
+const { isWorkdirAllowed, normalizeAllowedWorkdirs, resolveWorkdirPath } = srv;
+const OPTS = { homeDir: '/Users/test', cwd: '/srv', realpathFn: (p) => p };
+// unset / empty: no restriction (current behaviour preserved)
+eq('unset (undefined) allows anywhere', isWorkdirAllowed('/etc', undefined, OPTS), true);
+eq('unset (null) allows anywhere', isWorkdirAllowed('/etc', null, OPTS), true);
+eq('empty list allows anywhere', isWorkdirAllowed('/etc', [], OPTS), true);
+eq('normalize unset -> []', JSON.stringify(normalizeAllowedWorkdirs(null, OPTS)), '[]');
+// allowed: equal, inside, trailing slash, second entry
+eq('equal to allowed dir', isWorkdirAllowed('/srv/projects', ['/srv/projects'], OPTS), true);
+eq('inside allowed dir', isWorkdirAllowed('/srv/projects/app/src', ['/srv/projects'], OPTS), true);
+eq('allowed dir with trailing slash', isWorkdirAllowed('/srv/projects/app', ['/srv/projects/'], OPTS), true);
+eq('inside second allowed dir', isWorkdirAllowed('/other/app', ['/srv/projects', '/other'], OPTS), true);
+// rejected: outside, sibling prefix, parent
+eq('outside allowed dir', isWorkdirAllowed('/etc', ['/srv/projects'], OPTS), false);
+eq('sibling prefix is not inside (ProjectsEvil)', isWorkdirAllowed('/srv/projectsEvil', ['/srv/projects'], OPTS), false);
+eq('parent of allowed dir rejected', isWorkdirAllowed('/srv', ['/srv/projects'], OPTS), false);
+// `..` escapes are normalized away before the check
+eq('.. escape rejected', isWorkdirAllowed('/srv/projects/../etc', ['/srv/projects'], OPTS), false);
+eq('.. that stays inside allowed', isWorkdirAllowed('/srv/projects/app/../other', ['/srv/projects'], OPTS), true);
+// `~` expansion on both the request and the allowed entries
+eq('~/ request inside allowed', isWorkdirAllowed('~/Projects/app', ['/Users/test/Projects'], OPTS), true);
+eq('~/ allowed entry', isWorkdirAllowed('/Users/test/Projects/app', ['~/Projects'], OPTS), true);
+eq('bare ~ resolves to home', resolveWorkdirPath('~', OPTS), '/Users/test');
+eq('~/ resolves under home', resolveWorkdirPath('~/Projects', OPTS), '/Users/test/Projects');
+// symlink resolution: a link inside the allowed tree pointing out is rejected
+const LINKS = { '/srv/projects/link': '/etc/secret', '/srv/projects/real': '/srv/projects/real' };
+const LINKOPTS = { ...OPTS, realpathFn: (p) => LINKS[p] || p };
+eq('symlink escaping allowed dir rejected', isWorkdirAllowed('/srv/projects/link', ['/srv/projects'], LINKOPTS), false);
+eq('non-link path still allowed with realpath', isWorkdirAllowed('/srv/projects/real', ['/srv/projects'], LINKOPTS), true);
+// root as an allowed dir allows everything under it
+eq('root allowed dir', isWorkdirAllowed('/anywhere/deep', ['/'], OPTS), true);
+// invalid config fails loudly (never silently disables the restriction)
+throws('non-array allowed_workdirs throws', () => normalizeAllowedWorkdirs('/srv/projects', OPTS), 'allowed_workdirs must be an array');
+throws('non-string entry throws', () => normalizeAllowedWorkdirs([123], OPTS), 'allowed_workdirs');
+throws('empty-string entry throws', () => normalizeAllowedWorkdirs([''], OPTS), 'allowed_workdirs');
+throws('relative entry throws', () => normalizeAllowedWorkdirs(['relative/dir'], OPTS), 'absolute');
+console.log(`WDUNIT_PASS=${pass} WDUNIT_FAIL=${fail}`);
+process.exit(fail === 0 ? 0 : 1);
+WDEOF
+WDOUT="$(node "$TMP/workdir-unit.js" "$ROOT/server.js")"
+echo "$WDOUT" | grep -v '^WDUNIT_' || true
+WPASS="$(echo "$WDOUT" | sed -n 's/.*WDUNIT_PASS=\([0-9]*\).*/\1/p')"
+WFAIL="$(echo "$WDOUT" | sed -n 's/.*WDUNIT_FAIL=\([0-9]*\).*/\1/p')"
+PASS=$((PASS + ${WPASS:-0}))
+FAIL=$((FAIL + ${WFAIL:-1}))
+
+# --- 18. allowed_workdirs end-to-end (jobs + sessions) ------------------------
+# The main test server above runs WITHOUT allowed_workdirs: a job outside any
+# would-be list must still be accepted (backward compatibility).
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\": \"tiny hello\", \"workdir\": \"$TMP\"}" "$BASE/jobs")"
+check "allowlist unset: job outside any list accepted (202)" "202" "$CODE"
+
+mkdir -p "$TMP/allowed/sub" "$TMP/outside" "$TMP/allowed-evil" "$TMP/fakehome/Projects/app" "$TMP/data-allow"
+ln -s "$TMP/outside" "$TMP/allowed/link-out" 2>/dev/null || true
+cat > "$TMP/allow.json" <<EOF
+{
+  "port": 8814,
+  "bind_mode": "localhost",
+  "data_dir": "$TMP/data-allow",
+  "default_workdir": "$TMP/allowed/sub",
+  "allowed_workdirs": ["$TMP/allowed", "$TMP/fakehome/Projects"],
+  "muse_bin": "$ROOT/test/fake-muse.sh",
+  "mode": "unrestricted",
+  "max_model_steps": 0
+}
+EOF
+LUNA_BRIDGE_CONFIG="$TMP/allow.json" HOME="$TMP/fakehome" node "$ROOT/server.js" > "$TMP/allow.log" 2>&1 &
+APID=$!
+ABASE="http://127.0.0.1:8814"
+if wait_health "$ABASE"; then
+  check "allowlist server: health on 127.0.0.1" "ok" "ok"
+else
+  check "allowlist server: health on 127.0.0.1" "ok" "no-health"; cat "$TMP/allow.log"
+fi
+contains "allowlist server: startup log names allowed_workdirs" 'allowed_workdirs' "$(cat "$TMP/allow.log")"
+
+acode() { # acode <path> <json> -> http status against the allowlist server
+  curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "$2" "$ABASE$1"
+}
+ajob() { # ajob <workdir> -> http status for POST /jobs with that workdir
+  acode /jobs '{"prompt":"tiny hello","workdir":"'"$1"'"}'
+}
+check "allowlist job inside -> 202" "202" "$(ajob "$TMP/allowed/sub")"
+check "allowlist job at allowed root -> 202" "202" "$(ajob "$TMP/allowed")"
+check "allowlist job default workdir (inside) -> 202" "202" "$(acode /jobs '{"prompt":"tiny hello"}')"
+check "allowlist job ~/ expansion -> 202" "202" "$(ajob '~/Projects/app')"
+check "allowlist job outside -> 403" "403" "$(ajob "$TMP/outside")"
+check "allowlist job sibling prefix -> 403" "403" "$(ajob "$TMP/allowed-evil")"
+check "allowlist job .. escape -> 403" "403" "$(ajob "$TMP/allowed/sub/../../outside")"
+if [ -L "$TMP/allowed/link-out" ]; then
+  check "allowlist job symlink escape -> 403" "403" "$(ajob "$TMP/allowed/link-out")"
+fi
+ABODY="$(curl -s -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\":\"x\",\"workdir\":\"$TMP/outside\"}" "$ABASE/jobs")"
+contains "allowlist rejection names allowed_workdirs" 'allowed_workdirs' "$ABODY"
+
+asess() { # asess <workdir> -> http status for POST /sessions with that workdir
+  acode /sessions '{"prompt":"x","workdir":"'"$1"'"}'
+}
+check "allowlist session outside -> 403" "403" "$(asess "$TMP/outside")"
+check "allowlist session .. escape -> 403" "403" "$(asess "$TMP/allowed/sub/../../outside")"
+if command -v tmux >/dev/null 2>&1; then
+  ASESS="$(curl -s -w '\n%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\":\"interactive hello allow\",\"workdir\":\"$TMP/allowed/sub\"}" "$ABASE/sessions")"
+  check "allowlist session inside -> 201" "201" "$(echo "$ASESS" | tail -1)"
+  ASESS_ID="$(echo "$ASESS" | sed -n 's/.*"session_id": *"\([^"]*\)".*/\1/p')"
+  CREATED_TMUX="$CREATED_TMUX luna-$ASESS_ID"
+  [ -n "$ASESS_ID" ] && curl -s -X POST -H "$AUTH" "$ABASE/sessions/$ASESS_ID/kill" >/dev/null
+fi
+kill $APID 2>/dev/null; sleep 0.3
+
+# default_workdir outside the list: a request that omits workdir is rejected.
+cat > "$TMP/allow-bad-default.json" <<EOF
+{
+  "port": 8815,
+  "bind_mode": "localhost",
+  "data_dir": "$TMP/data-allow",
+  "default_workdir": "$TMP/outside",
+  "allowed_workdirs": ["$TMP/allowed"],
+  "muse_bin": "$ROOT/test/fake-muse.sh",
+  "mode": "unrestricted",
+  "max_model_steps": 0
+}
+EOF
+LUNA_BRIDGE_CONFIG="$TMP/allow-bad-default.json" node "$ROOT/server.js" > "$TMP/allow-bad-default.log" 2>&1 &
+APID=$!
+if wait_health "http://127.0.0.1:8815"; then
+  check "allowlist bad-default server: health" "ok" "ok"
+else
+  check "allowlist bad-default server: health" "ok" "no-health"; cat "$TMP/allow-bad-default.log"
+fi
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"prompt":"x"}' "http://127.0.0.1:8815/jobs")"
+check "allowlist job with default outside -> 403" "403" "$CODE"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"prompt":"x"}' "http://127.0.0.1:8815/sessions")"
+check "allowlist session with default outside -> 403" "403" "$CODE"
+kill $APID 2>/dev/null; sleep 0.3
+
 # --- summary ------------------------------------------------------------------
 echo
 echo "PASS: $PASS  FAIL: $FAIL"
