@@ -1,5 +1,7 @@
 <div align="center">
 
+<p align="center"><img src="assets/logo.png" width="160" alt="luna-bridge logo"></p>
+
 <h1>luna-bridge</h1>
 
 <p><strong>Send a coding task from anywhere. Your Mac does the work.</strong><br>
