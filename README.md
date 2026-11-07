@@ -80,7 +80,7 @@ signed in (plus tmux if you want shared sessions). Full step-by-step:
    sh scripts/install.sh
    luna-bridge status
    curl http://127.0.0.1:8787/health
-   # {"ok":true,"version":"0.1.0","mode":"unrestricted"}
+   # {"ok":true,"version":"0.1.0","mode":"auto-review"}
    ```
 
    Prefer it attached to a terminal for a first run? Skip `install.sh`
@@ -166,7 +166,9 @@ Job output is the combined stdout+stderr tail (up to 200 KB, see
 `max_output_tail_bytes`); the full log is kept in the job directory on
 disk (`data/jobs/<id>/log.txt`), along with `prompt.txt` and `meta.json`.
 `approval_blocked: true` in job status means the output looks like the
-run stalled on an approval request (heuristic marker scan).
+run stalled on an approval request (heuristic marker scan — a job that
+hangs with no output at all is invisible to it; see
+[Permission modes](#permission-modes)).
 
 ### Shared sessions (owner + Luna in one terminal)
 
@@ -215,9 +217,9 @@ rejected):
 
 | Bridge mode | Flags | Meaning |
 |---|---|---|
-| `unrestricted` | `--yolo` | No approval, no sandbox, workspace trusted. Shipped default — read [Security model](#security-model) before keeping it |
-| `auto-review` | (none) | Default posture; an automated judge clears routine approvals |
-| `ask-me` | `--approval-mode on-request --approval-judge off` | Every eligible approval goes to the user — headless runs stall (bridge reports `approval_blocked: true`) |
+| `unrestricted` | `--yolo` | No approval, no sandbox, workspace trusted — switch to it only deliberately; read [Security model](#security-model) first |
+| `auto-review` | (none) | No mode flags at all — the Muse Code settings profile governs (see below); with the Auto-review profile, an automated judge clears routine approvals. Shipped default |
+| `ask-me` | `--approval-mode on-request --approval-judge off` | Every eligible approval goes to the user — headless runs stall (bridge reports `approval_blocked: true` when it can tell) |
 | `read-only` | `--disable-write --disable-shell` | Read-only (reported in community docs; verify with `muse exec --help`) |
 
 Every run also gets `--trust-workspace` and `--max-model-steps <cap>`
@@ -226,6 +228,63 @@ Code default profile from `~/.config/muse/settings.json`, best effort);
 `POST /mode` changes it for subsequently started jobs (persisted). Luna
 only switches the mode after the user explicitly allows it — never
 silently.
+
+**Two layers must agree.** The bridge mode is only the first layer: it
+decides which flags the bridge passes. The second layer is Muse Code's
+own default permission profile, `permissions.default_profile` in
+`~/.config/muse/settings.json` (values Muse Code itself writes look
+like `:auto-review`, `:unrestricted`). The layers interact per mode:
+
+- `unrestricted`, `ask-me`, and `read-only` pass explicit flags, so the
+  bridge mode is what the run gets.
+- `auto-review` passes **no flags**, so the settings profile governs the
+  run. If that profile is `:unrestricted`, an `auto-review` bridge run
+  behaves Unrestricted — no approvals, no sandbox — despite the bridge
+  mode name. The bridge mode alone does not tell you the posture.
+
+**Recommended setup: set both layers to auto-review** — bridge `mode`:
+`auto-review` and settings `default_profile`: `:auto-review`. Check both
+at any time with `GET /mode`: it returns `mode`,
+`muse_settings_profile`, and `muse_args_for_mode` (the exact flags the
+current mode passes; empty for `auto-review`).
+
+**`sync_muse_settings` caveat.** With `sync_muse_settings: true`,
+`POST /mode` also writes the mode into `permissions.default_profile`
+(default `false` — changing your interactive Muse Code settings is
+opt-in). Know what it writes: the bridge stores the colon-prefixed
+profile id (`:auto-review`), the same form Muse Code itself uses for
+its built-in profiles.
+
+**Headless jobs vs live sessions: who answers an approval?** A headless
+job (`muse exec` with piped output) has no input channel — the bridge
+can read its output and cancel it, nothing more. So:
+
+- In `ask-me`, a headless job stalls on the first approval: the prompt
+  waits for a person, and there is nobody who can answer it. The only
+  remedies are cancel (`POST /jobs/:id/cancel`) and restarting in a mode
+  that does not ask.
+- In `auto-review` (with the Auto-review settings profile), Muse Code's
+  automated judge clears routine approvals, so headless jobs can run
+  unattended without dropping to `unrestricted`.
+- Approving from your phone works **only through a live shared tmux
+  session**: the approval prompt is visible in the pane
+  (`GET /sessions/:id/pane`), and it can be answered there — by you
+  attached from a terminal, or by Luna typing the answer via
+  `POST /sessions/:id/input` on your explicit word (one-driver rule
+  applies). There is no equivalent for a headless job.
+
+**The `approval_blocked` detector — and its blind spot.** The bridge
+scans each chunk of job output against a marker regex (`approval
+required`, `waiting for approval`, `needs approval`, `approval
+request`, `permission denied`, `permission required`) and sets
+`approval_blocked: true` in the job status on a match. It is a
+heuristic over output text only: **a job that hangs silently, producing
+no output at all, keeps `approval_blocked: false`** — there is no text
+to match (this is exactly how a stalled-at-startup run looks). So
+`false` does not mean healthy: a job that stays `running` with an empty
+or frozen output tail deserves suspicion, and cancelling it is the
+remedy. The full log stays on disk at `data/jobs/<id>/log.txt` either
+way.
 
 **Model and effort, per run.** Both `POST /jobs` and `POST /sessions`
 accept optional `model` and `effort`:
@@ -388,10 +447,10 @@ example.
 | `muse_bin` | `"muse"` | Agent CLI binary (Muse Code today; a full path or wrapper script also works). Resolved via `which` at startup, logged |
 | `tmux_bin` | `"tmux"` | tmux binary for shared sessions (resolved via `which` at startup, logged). Headless jobs never touch tmux |
 | `muse_args` | `[]` | Extra args appended to every `muse exec` call (after the mode flags), e.g. `["--model", "muse-spark-1.3"]` |
-| `mode` | `"unrestricted"` | Permission mode for new jobs (see [Permission modes](#permission-modes)) |
+| `mode` | `"auto-review"` | Permission mode for new jobs (see [Permission modes](#permission-modes)) |
 | `default_model` | `null` | Default model id (e.g. `"muse-spark-1.3"`). `null` = Muse Code decides. Per-request `model` overrides it |
 | `default_effort` | `null` | Default effort tier (`none\|minimal\|low\|medium\|high\|xhigh\|max\|ultra`). `null` = Muse Code decides (`high`). Per-request `effort` overrides it |
-| `sync_muse_settings` | `false` | If `true`, `POST /mode` also writes `permissions.default_profile` into `~/.config/muse/settings.json` (opt-in) |
+| `sync_muse_settings` | `false` | If `true`, `POST /mode` also writes `permissions.default_profile` into `~/.config/muse/settings.json` (opt-in). Writes the colon-prefixed profile id (e.g. `:auto-review`), as Muse Code itself does — see [Permission modes](#permission-modes) |
 | `keep_awake` | `false` | macOS only: hold an idle-sleep assertion (`caffeinate -i -w <pid>`) while the bridge runs. No idle sleep while up — mind battery/heat |
 | `max_model_steps` | `300` | Cap on model steps per job (`0` = no cap). Prevents runaway quota burn |
 | `prompt_via_file` | `true` | Pass the prompt via `--prompt-file` (also saved as `prompt.txt` in the job dir for audit). `false` = positional argument |
@@ -425,6 +484,11 @@ Full policy and private reporting: [SECURITY.md](SECURITY.md).
   never runs arbitrary shell commands from requests — direct `spawn`
   with an argv array, no shell. Jobs run as the Mac user that runs the
   server, with that user's environment.
+- **Permission posture:** the bridge `mode` and Muse Code's settings
+  profile (`permissions.default_profile`) are two layers, and in
+  `auto-review` the settings profile governs because the bridge passes
+  no flags — a `:unrestricted` profile makes the run Unrestricted. Set
+  both layers deliberately; see [Permission modes](#permission-modes).
 - **Input validation:** job ids, paths, modes, and sizes are validated;
   attachments must live under the inbox dir; uploads are sanitized to a
   basename (no path traversal); anything unexpected is a 400.

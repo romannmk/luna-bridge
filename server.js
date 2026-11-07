@@ -143,7 +143,7 @@ const DEFAULTS = {
   muse_args: [],
   // Current permission mode for subsequently started jobs.
   // One of: "ask-me" | "auto-review" | "unrestricted" | "read-only"
-  mode: 'unrestricted',
+  mode: 'auto-review',
   // Default model for runs (null = leave unset, let Muse Code decide).
   // Free-form model id, e.g. "muse-spark-1.3". Per-request `model` overrides it.
   default_model: null,
@@ -619,7 +619,11 @@ function writeMuseDefaultProfile(profile) {
   } catch { /* start fresh */ }
   if (!isPlainObject(json)) json = {};
   if (!isPlainObject(json.permissions)) json.permissions = {};
-  json.permissions.default_profile = profile;
+  // Muse Code writes built-in profile ids with a leading ':' (e.g.
+  // ":auto-review"); store the same form so the value matches what
+  // Muse Code itself reads and writes. Bridge mode names carry no prefix.
+  const id = profile.startsWith(':') ? profile : `:${profile}`;
+  json.permissions.default_profile = id;
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(json, null, 2) + '\n', 'utf8');
 }

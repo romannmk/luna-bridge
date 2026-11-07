@@ -83,9 +83,27 @@ Edit `config.json` (it is gitignored — it never leaves your machine):
   the agent still runs as your user and can `cd` elsewhere inside a
   session (see "Security model" in README.md). Recommended: your
   projects folder.
-- `mode`: `"unrestricted"` is the shipped default. It runs tasks with no
-  approval prompts and no sandbox — keep it only if that is what you want
-  (see "Security model" in README.md).
+- `mode`: `"auto-review"` is the shipped default. `unrestricted` runs
+  tasks with no approval prompts and no sandbox (`--yolo`) — switch to
+  it only deliberately (see "Security model" in README.md). The other modes:
+  `ask-me` (`--approval-mode on-request --approval-judge off`, every
+  approval waits for a person — headless jobs stall, since nobody can
+  answer), `read-only` (`--disable-write --disable-shell`), and
+  `auto-review` (**no flags at all**). Because `auto-review` passes no
+  flags, Muse Code's own settings profile —
+  `permissions.default_profile` in `~/.config/muse/settings.json` —
+  governs the run: if it says `:unrestricted`, the run behaves
+  Unrestricted whatever the bridge mode is called. Recommended: set
+  **both layers to auto-review** (bridge `mode: "auto-review"` and
+  settings `"default_profile": ":auto-review"`); the automated judge
+  then clears routine approvals and headless jobs run unattended. Check
+  both layers any time with `GET /mode` (it returns `mode`,
+  `muse_settings_profile`, and `muse_args_for_mode`). Full detail:
+  "Permission modes" in README.md.
+- `sync_muse_settings`: leave at `false` unless you want `POST /mode` to
+  also write `permissions.default_profile` in
+  `~/.config/muse/settings.json`. It writes the colon-prefixed profile
+  id (`:auto-review`), the same form Muse Code itself uses.
 - `default_model` / `default_effort`: leave both at `null` (unset) unless
   you want every run to use a specific model or effort tier. Luna can also
   set them per run (`model`, `effort` fields on `POST /jobs` and
@@ -134,7 +152,7 @@ in chat. Then check the server answers locally:
 
 ```sh
 curl http://127.0.0.1:8787/health
-# {"ok":true,"version":"0.1.0","mode":"unrestricted"}
+# {"ok":true,"version":"0.1.0","mode":"auto-review"}
 ```
 
 Stop it with Ctrl+C.
@@ -258,11 +276,27 @@ say who drives.
 - **Job fails immediately with "muse binary not found"**: the server's
   launchd environment has a minimal PATH. Set `muse_bin` in `config.json`
   to the full path (find it with `command -v muse` in your terminal).
-- **Job stalls on an approval**: the mode is not unrestricted. Check
-  `GET /mode`; if it is not `unrestricted`, tell Luna — she switches it
-  only on your explicit word.
-- **A job runs forever**: Luna can cancel it (`POST /jobs/:id/cancel`).
-  `max_model_steps` (default 300) caps how much work a run can do.
+- **Job stalls on an approval**: a headless job has no input channel, so
+  an approval prompt waits for a person who cannot answer. If the job
+  status shows `approval_blocked: true`, the bridge saw an approval
+  marker in the output. Check **both layers** with `GET /mode`: the
+  bridge `mode` and `muse_settings_profile` (`permissions.default_profile`
+  in `~/.config/muse/settings.json`). In `ask-me` every approval goes to
+  the user, so headless jobs stall by design; in `auto-review` the
+  bridge passes no flags and the settings profile governs — a profile
+  that asks will stall the same way. Cancel the job
+  (`POST /jobs/:id/cancel`), then either set both layers to auto-review
+  (the judge clears routine approvals), use `unrestricted` deliberately,
+  or run the task as a live shared tmux session, where the prompt is
+  visible in the pane and can be answered (by you attached, or by Luna
+  typing on your explicit word). Luna switches the mode only on your
+  explicit word.
+- **Job runs forever with no output at all**: treat it as stalled even
+  though `approval_blocked` stays `false` — the detector is a regex over
+  job output, and a silent hang produces nothing to match. Cancel it
+  (`POST /jobs/:id/cancel`) and check `data/jobs/<id>/log.txt` on disk.
+  `max_model_steps` (default 300) caps how much work a run can do, but
+  it does not unstick a run waiting on an approval or hung at startup.
 - **Port already in use**: the bridge is probably already running —
   in the background (`luna-bridge status`) or in a foreground terminal
   somewhere. Stop the other copy first (`luna-bridge stop`, or Ctrl+C

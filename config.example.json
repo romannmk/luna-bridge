@@ -17,7 +17,7 @@
   "max_output_tail_bytes": 204800,
   "max_prompt_bytes": 204800,
   "max_upload_bytes": 26214400,
-  "mode": "unrestricted",
+  "mode": "auto-review",
   "muse_args": [],
   "muse_bin": "muse",
   "tmux_bin": "tmux",
