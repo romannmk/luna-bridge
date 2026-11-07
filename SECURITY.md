@@ -27,7 +27,12 @@ explicit private transport the owner chooses (for example a mesh VPN, an SSH
 forward, or a tunnel in front of 127.0.0.1). The server only ever spawns the
 one configured agent binary (plus tmux for shared sessions and, opt-in on
 macOS, `caffeinate`); it never executes arbitrary shell commands from
-requests. Treat the token as full access to that agent on that machine:
+requests. An optional `allowed_workdirs` config (array of absolute
+paths) restricts where jobs and sessions may *start* (403 outside the
+list); it does not confine the agent afterwards — it still runs as the
+owner's user and can `cd` elsewhere inside a session, so true
+confinement would need OS-level sandboxing (`sandbox-exec` or a
+separate user), which is out of scope. Treat the token as full access to that agent on that machine:
 whoever holds it can run tasks as the user who runs the bridge. Revoke
 access by stopping the bridge and rotating the token (delete the token file
 and restart). See "Security model" in [README.md](README.md) for details.

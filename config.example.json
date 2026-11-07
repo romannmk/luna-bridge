@@ -6,6 +6,8 @@
   "cancel_grace_ms": 3000,
   "data_dir": null,
   "default_workdir": null,
+  "_comment_allowed_workdirs": "Optional array of absolute paths (e.g. [\"/Users/you/Projects\"]). When set and non-empty, POST /jobs and POST /sessions reject (403) any workdir outside these dirs. null/empty = no restriction. Start directory only: the agent still runs as your macOS user and can cd elsewhere inside a session.",
+  "allowed_workdirs": null,
   "default_model": null,
   "default_effort": null,
   "_comment_keep_awake": "Opt-in, macOS only. true = hold an idle-sleep assertion (built-in caffeinate) for as long as the bridge runs, so the Mac stays online; the Mac will NOT idle-sleep while the daemon is up (mind battery/heat on a laptop). Default false.",
