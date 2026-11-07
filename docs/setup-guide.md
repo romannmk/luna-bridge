@@ -117,9 +117,9 @@ minimum worth setting:
 - `muse_bin` — the full path to `muse` if it is not on the PATH of the
   launchd environment (find it with `command -v muse`), e.g.
   `/Users/<you>/.local/bin/muse`.
-- `mode` — the permission mode, `unrestricted` by default. That default
-  runs tasks with no approval prompts and no sandbox; keep it only
-  deliberately (see "Security" below). Note the two layers: in
+- `mode` — the permission mode, `auto-review` by default.
+  `unrestricted` runs tasks with no approval prompts and no sandbox;
+  switch to it only deliberately (see "Security" below). Note the two layers: in
   `auto-review` the bridge passes no flags, so Muse Code's
   `permissions.default_profile` (in `~/.config/muse/settings.json`)
   governs the run — set both layers to auto-review for the recommended
@@ -143,7 +143,7 @@ Check the server is alive:
 
 ```sh
 curl http://127.0.0.1:8787/health
-# {"ok":true,"version":"0.1.0","mode":"unrestricted"}
+# {"ok":true,"version":"0.1.0","mode":"auto-review"}
 ```
 
 Stop it with Ctrl+C.
@@ -330,10 +330,9 @@ bridge `mode` `auto-review` and settings profile `:auto-review`.
 
 **`sync_muse_settings`.** When `true` (default `false`), `POST /mode`
 also writes `permissions.default_profile` into
-`~/.config/muse/settings.json`. Caveat: it writes the bare mode name
-(`auto-review`) **without** the leading `:` Muse Code itself uses for
-built-in profiles (`:auto-review`). After enabling sync, check the file
-once and add the prefix by hand if your Muse Code expects it.
+`~/.config/muse/settings.json`. It writes the colon-prefixed profile
+id (`:auto-review`), the same form Muse Code itself uses for its
+built-in profiles.
 
 **Headless jobs vs live sessions.** A headless job (`muse exec`, piped
 output) has no input channel: the bridge can read output and cancel,
@@ -371,8 +370,8 @@ cancel it (`POST /jobs/:id/cancel`) and read
 | `muse_bin` | `muse` | Path to the Muse Code binary |
 | `tmux_bin` | `tmux` | Path to the tmux binary (shared sessions only) |
 | `muse_args` | `[]` | Extra args appended to every agent invocation |
-| `mode` | `unrestricted` | Permission mode |
-| `sync_muse_settings` | `false` | Also write the mode to `~/.config/muse/settings.json` on `POST /mode` (bare name, no `:` prefix — see "Permission modes") |
+| `mode` | `auto-review` | Permission mode |
+| `sync_muse_settings` | `false` | Also write the mode to `~/.config/muse/settings.json` on `POST /mode` (colon-prefixed id, e.g. `:auto-review` — see "Permission modes") |
 | `keep_awake` | `false` | macOS only: hold an idle-sleep assertion (`caffeinate`) while the bridge runs |
 | `max_model_steps` | `300` | Per-job step cap (`0` = no cap) |
 | `prompt_via_file` | `true` | Pass the prompt via `--prompt-file` |
@@ -446,9 +445,10 @@ access control.
 - **Revoking access:** stop the bridge (`luna-bridge stop`), rotate the
   token (delete the token file and restart), or remove the device from
   your private network.
-- **The default mode is a deliberate risk:** `unrestricted` (`--yolo`)
-  means a submitted task runs with no approvals. That is stated loudly in
-  the README, not hidden in config. Report vulnerabilities privately —
+- **`unrestricted` is a deliberate risk:** it (`--yolo`) means a
+  submitted task runs with no approvals. Choose it only deliberately —
+  the shipped default is `auto-review`. That is stated loudly in the
+  README, not hidden in config. Report vulnerabilities privately —
   see [SECURITY.md](../SECURITY.md).
 - **Permission posture has two layers:** the bridge `mode` and Muse
   Code's `permissions.default_profile`. In `auto-review` the bridge

@@ -80,7 +80,7 @@ signed in (plus tmux if you want shared sessions). Full step-by-step:
    sh scripts/install.sh
    luna-bridge status
    curl http://127.0.0.1:8787/health
-   # {"ok":true,"version":"0.1.0","mode":"unrestricted"}
+   # {"ok":true,"version":"0.1.0","mode":"auto-review"}
    ```
 
    Prefer it attached to a terminal for a first run? Skip `install.sh`
@@ -217,8 +217,8 @@ rejected):
 
 | Bridge mode | Flags | Meaning |
 |---|---|---|
-| `unrestricted` | `--yolo` | No approval, no sandbox, workspace trusted. Shipped default — read [Security model](#security-model) before keeping it |
-| `auto-review` | (none) | No mode flags at all — the Muse Code settings profile governs (see below); with the Auto-review profile, an automated judge clears routine approvals |
+| `unrestricted` | `--yolo` | No approval, no sandbox, workspace trusted — switch to it only deliberately; read [Security model](#security-model) first |
+| `auto-review` | (none) | No mode flags at all — the Muse Code settings profile governs (see below); with the Auto-review profile, an automated judge clears routine approvals. Shipped default |
 | `ask-me` | `--approval-mode on-request --approval-judge off` | Every eligible approval goes to the user — headless runs stall (bridge reports `approval_blocked: true` when it can tell) |
 | `read-only` | `--disable-write --disable-shell` | Read-only (reported in community docs; verify with `muse exec --help`) |
 
@@ -251,12 +251,9 @@ current mode passes; empty for `auto-review`).
 **`sync_muse_settings` caveat.** With `sync_muse_settings: true`,
 `POST /mode` also writes the mode into `permissions.default_profile`
 (default `false` — changing your interactive Muse Code settings is
-opt-in). Know what it writes: the bridge stores the bare mode name
-(`auto-review`) **without** the leading `:` that Muse Code itself uses
-for its built-in profiles (`:auto-review`). After enabling sync, open
-`~/.config/muse/settings.json` once and confirm the value looks like
-the one Muse Code writes; fix the prefix by hand if your Muse Code
-version expects it.
+opt-in). Know what it writes: the bridge stores the colon-prefixed
+profile id (`:auto-review`), the same form Muse Code itself uses for
+its built-in profiles.
 
 **Headless jobs vs live sessions: who answers an approval?** A headless
 job (`muse exec` with piped output) has no input channel — the bridge
@@ -450,10 +447,10 @@ example.
 | `muse_bin` | `"muse"` | Agent CLI binary (Muse Code today; a full path or wrapper script also works). Resolved via `which` at startup, logged |
 | `tmux_bin` | `"tmux"` | tmux binary for shared sessions (resolved via `which` at startup, logged). Headless jobs never touch tmux |
 | `muse_args` | `[]` | Extra args appended to every `muse exec` call (after the mode flags), e.g. `["--model", "muse-spark-1.3"]` |
-| `mode` | `"unrestricted"` | Permission mode for new jobs (see [Permission modes](#permission-modes)) |
+| `mode` | `"auto-review"` | Permission mode for new jobs (see [Permission modes](#permission-modes)) |
 | `default_model` | `null` | Default model id (e.g. `"muse-spark-1.3"`). `null` = Muse Code decides. Per-request `model` overrides it |
 | `default_effort` | `null` | Default effort tier (`none\|minimal\|low\|medium\|high\|xhigh\|max\|ultra`). `null` = Muse Code decides (`high`). Per-request `effort` overrides it |
-| `sync_muse_settings` | `false` | If `true`, `POST /mode` also writes `permissions.default_profile` into `~/.config/muse/settings.json` (opt-in). Writes the bare mode name, without the `:` prefix Muse Code itself uses — see the caveat in [Permission modes](#permission-modes) |
+| `sync_muse_settings` | `false` | If `true`, `POST /mode` also writes `permissions.default_profile` into `~/.config/muse/settings.json` (opt-in). Writes the colon-prefixed profile id (e.g. `:auto-review`), as Muse Code itself does — see [Permission modes](#permission-modes) |
 | `keep_awake` | `false` | macOS only: hold an idle-sleep assertion (`caffeinate -i -w <pid>`) while the bridge runs. No idle sleep while up — mind battery/heat |
 | `max_model_steps` | `300` | Cap on model steps per job (`0` = no cap). Prevents runaway quota burn |
 | `prompt_via_file` | `true` | Pass the prompt via `--prompt-file` (also saved as `prompt.txt` in the job dir for audit). `false` = positional argument |

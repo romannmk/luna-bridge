@@ -83,9 +83,9 @@ Edit `config.json` (it is gitignored — it never leaves your machine):
   the agent still runs as your user and can `cd` elsewhere inside a
   session (see "Security model" in README.md). Recommended: your
   projects folder.
-- `mode`: `"unrestricted"` is the shipped default. It runs tasks with no
-  approval prompts and no sandbox (`--yolo`) — keep it only if that is
-  what you want (see "Security model" in README.md). The other modes:
+- `mode`: `"auto-review"` is the shipped default. `unrestricted` runs
+  tasks with no approval prompts and no sandbox (`--yolo`) — switch to
+  it only deliberately (see "Security model" in README.md). The other modes:
   `ask-me` (`--approval-mode on-request --approval-judge off`, every
   approval waits for a person — headless jobs stall, since nobody can
   answer), `read-only` (`--disable-write --disable-shell`), and
@@ -102,10 +102,8 @@ Edit `config.json` (it is gitignored — it never leaves your machine):
   "Permission modes" in README.md.
 - `sync_muse_settings`: leave at `false` unless you want `POST /mode` to
   also write `permissions.default_profile` in
-  `~/.config/muse/settings.json`. Caveat: the bridge writes the bare
-  mode name (`auto-review`) without the `:` prefix Muse Code itself
-  uses (`:auto-review`) — after enabling it, check the file once and fix
-  the prefix by hand if needed.
+  `~/.config/muse/settings.json`. It writes the colon-prefixed profile
+  id (`:auto-review`), the same form Muse Code itself uses.
 - `default_model` / `default_effort`: leave both at `null` (unset) unless
   you want every run to use a specific model or effort tier. Luna can also
   set them per run (`model`, `effort` fields on `POST /jobs` and
@@ -154,7 +152,7 @@ in chat. Then check the server answers locally:
 
 ```sh
 curl http://127.0.0.1:8787/health
-# {"ok":true,"version":"0.1.0","mode":"unrestricted"}
+# {"ok":true,"version":"0.1.0","mode":"auto-review"}
 ```
 
 Stop it with Ctrl+C.
