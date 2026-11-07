@@ -119,7 +119,11 @@ minimum worth setting:
   `/Users/<you>/.local/bin/muse`.
 - `mode` — the permission mode, `unrestricted` by default. That default
   runs tasks with no approval prompts and no sandbox; keep it only
-  deliberately (see "Security" below).
+  deliberately (see "Security" below). Note the two layers: in
+  `auto-review` the bridge passes no flags, so Muse Code's
+  `permissions.default_profile` (in `~/.config/muse/settings.json`)
+  governs the run — set both layers to auto-review for the recommended
+  posture (see "Permission modes" below).
 - Leave everything else at the defaults for the first run (full key
   reference below).
 
@@ -304,12 +308,52 @@ is on disk at `data/jobs/<id>/log.txt`.
 | Bridge mode | `muse exec` flags | Meaning |
 |---|---|---|
 | `unrestricted` | `--yolo` | No approvals, no sandbox |
-| `auto-review` | — | Automated review of routine actions (Muse Code default) |
-| `ask-me` | `--approval-mode on-request --approval-judge off` | Every approval goes to the user; headless jobs stall and the bridge reports `approval_blocked: true` |
+| `auto-review` | — (none) | No mode flags: the Muse Code settings profile governs; with the Auto-review profile, an automated judge clears routine approvals |
+| `ask-me` | `--approval-mode on-request --approval-judge off` | Every approval goes to the user; headless jobs stall and the bridge reports `approval_blocked: true` when it can tell |
 | `read-only` | `--disable-write --disable-shell` | Read only |
 
 Every run also gets `--trust-workspace`, plus `--max-model-steps <cap>`
 when a cap is set.
+
+**Two layers must agree.** The bridge mode only chooses the flags above.
+The second layer is Muse Code's own default profile,
+`permissions.default_profile` in `~/.config/muse/settings.json`
+(Muse Code writes values like `:auto-review`, `:unrestricted`).
+`unrestricted`, `ask-me`, and `read-only` pass explicit flags, so the
+bridge mode decides. `auto-review` passes **no flags**, so the settings
+profile governs: with `"default_profile": ":unrestricted"` the run
+behaves Unrestricted (no approvals, no sandbox) even though the bridge
+mode says `auto-review`. **Recommended: both layers on auto-review** —
+bridge `mode` `auto-review` and settings profile `:auto-review`.
+`GET /mode` shows both layers at once (`mode`,
+`muse_settings_profile`, `muse_args_for_mode`).
+
+**`sync_muse_settings`.** When `true` (default `false`), `POST /mode`
+also writes `permissions.default_profile` into
+`~/.config/muse/settings.json`. Caveat: it writes the bare mode name
+(`auto-review`) **without** the leading `:` Muse Code itself uses for
+built-in profiles (`:auto-review`). After enabling sync, check the file
+once and add the prefix by hand if your Muse Code expects it.
+
+**Headless jobs vs live sessions.** A headless job (`muse exec`, piped
+output) has no input channel: the bridge can read output and cancel,
+nothing else. In `ask-me` it stalls on the first approval — nobody can
+answer. In `auto-review` (both layers), the automated judge clears
+routine approvals, so jobs run unattended. Approving from your phone
+works **only in a live shared tmux session**: the prompt shows in the
+pane (`GET /sessions/:id/pane`) and is answered by typing there — you
+attached via tmux, or the client via `POST /sessions/:id/input` on your
+explicit word. Headless jobs have no equivalent.
+
+**`approval_blocked` and its blind spot.** The bridge regex-scans each
+output chunk for markers (`approval required`, `waiting for approval`,
+`needs approval`, `approval request`, `permission denied`, `permission
+required`) and sets `approval_blocked: true` in the job status on a
+match. A job that hangs **silently — zero output — never matches**, so
+the flag stays `false` (e.g. a run stalled at startup). `running` with
+an empty or frozen output tail means "suspect a stall", not "healthy";
+cancel it (`POST /jobs/:id/cancel`) and read
+`data/jobs/<id>/log.txt`.
 
 ### Configuration keys
 
@@ -328,7 +372,7 @@ when a cap is set.
 | `tmux_bin` | `tmux` | Path to the tmux binary (shared sessions only) |
 | `muse_args` | `[]` | Extra args appended to every agent invocation |
 | `mode` | `unrestricted` | Permission mode |
-| `sync_muse_settings` | `false` | Also write the mode to `~/.config/muse/settings.json` |
+| `sync_muse_settings` | `false` | Also write the mode to `~/.config/muse/settings.json` on `POST /mode` (bare name, no `:` prefix — see "Permission modes") |
 | `keep_awake` | `false` | macOS only: hold an idle-sleep assertion (`caffeinate`) while the bridge runs |
 | `max_model_steps` | `300` | Per-job step cap (`0` = no cap) |
 | `prompt_via_file` | `true` | Pass the prompt via `--prompt-file` |
@@ -406,6 +450,11 @@ access control.
   means a submitted task runs with no approvals. That is stated loudly in
   the README, not hidden in config. Report vulnerabilities privately —
   see [SECURITY.md](../SECURITY.md).
+- **Permission posture has two layers:** the bridge `mode` and Muse
+  Code's `permissions.default_profile`. In `auto-review` the bridge
+  passes no flags, so the settings profile decides — `:unrestricted`
+  there means no approvals and no sandbox. Verify both with `GET /mode`
+  (see "Permission modes").
 
 ## Project layout
 
