@@ -1,4 +1,4 @@
-# luna-bridge setup (Mac)
+# muse-bridge setup (Mac)
 
 Step-by-step setup on the Mac. Takes about ten minutes. Everything runs as
 your own user — no sudo, no system-wide install.
@@ -57,8 +57,8 @@ start on localhost today, add Tailscale or Cloudflare Tunnel later.
 ## 2. Clone
 
 ```sh
-git clone https://github.com/romannmk/luna-bridge.git
-cd luna-bridge
+git clone https://github.com/romannmk/muse-bridge.git
+cd muse-bridge
 ```
 
 ## 3. Configure
@@ -105,7 +105,7 @@ Edit `config.json` (it is gitignored — it never leaves your machine):
   `~/.config/muse/settings.json`. It writes the colon-prefixed profile
   id (`:auto-review`), the same form Muse Code itself uses.
 - `default_model` / `default_effort`: leave both at `null` (unset) unless
-  you want every run to use a specific model or effort tier. Luna can also
+  you want every run to use a specific model or effort tier. Muse can also
   set them per run (`model`, `effort` fields on `POST /jobs` and
   `POST /sessions`); per-request values win. See README for the effort
   enum and example model ids.
@@ -117,9 +117,9 @@ Edit `config.json` (it is gitignored — it never leaves your machine):
   `caffeinate` tool for as long as it runs. Trade-off: the Mac will
   **not** idle-sleep at all while the daemon is up — on a laptop that
   means battery drain and heat when unplugged, so plug in or close the
-  bridge (`luna-bridge stop`) when you do not need it. Closing the lid
+  bridge (`muse-bridge stop`) when you do not need it. Closing the lid
   or choosing Sleep manually still sleeps the Mac. After changing it,
-  restart the bridge (`luna-bridge restart`, step 5).
+  restart the bridge (`muse-bridge restart`, step 5).
 - Leave everything else at the defaults for the first run.
 
 ## 4. First run (foreground)
@@ -132,11 +132,11 @@ This runs the bridge attached to this terminal, with the startup log
 on stdout in front of you; Ctrl+C stops it. It is the same server and
 the same `config.json` as the background launchd run in step 5 —
 foreground is how you try it out (and how you re-run it later, via
-`luna-bridge foreground`, whenever you want it open only while you
+`muse-bridge foreground`, whenever you want it open only while you
 watch); background via launchd is the day-to-day default.
 
 On first run with no token configured, the server generates a strong bearer
-token and saves it to `~/.config/luna-bridge/token` (mode 0600). The token
+token and saves it to `~/.config/muse-bridge/token` (mode 0600). The token
 value is never printed or logged, in either mode — under launchd stdout
 lands in `logs/bridge.out.log`, so printing it there would leak it into
 a log file. Startup
@@ -144,10 +144,10 @@ confirms the generation without revealing the value:
 
 ```
 [auth] Generated a new bearer token and saved it to:
-[auth]   /Users/you/.config/luna-bridge/token
+[auth]   /Users/you/.config/muse-bridge/token
 ```
 
-Luna reads the token from that file when needed — never paste secrets
+Muse reads the token from that file when needed — never paste secrets
 in chat. Then check the server answers locally:
 
 ```sh
@@ -163,9 +163,9 @@ Stop it with Ctrl+C.
 sh scripts/install.sh
 ```
 
-This copies the launchd plist to `~/Library/LaunchAgents/com.luna.bridge.plist`
+This copies the launchd plist to `~/Library/LaunchAgents/com.muse.bridge.plist`
 (with the correct paths filled in) and loads it. It also installs the
-`luna-bridge` terminal command to `~/.local/bin` (it tells you if that
+`muse-bridge` terminal command to `~/.local/bin` (it tells you if that
 directory is not on your `PATH` yet and how to add it). Logs go to
 `logs/` in the repo directory. Background via launchd is the default
 way the bridge runs: it is **online while it is running and offline
@@ -176,36 +176,36 @@ Day to day, open and close the bridge with that command — this is the
 way to do it:
 
 ```sh
-luna-bridge start       # open the bridge
-luna-bridge stop        # close the bridge
-luna-bridge restart     # reload it (e.g. after editing config.json)
-luna-bridge status      # agent loaded? bridge pid? health?
-luna-bridge foreground  # run it in this terminal instead (stop first if open)
+muse-bridge start       # open the bridge
+muse-bridge stop        # close the bridge
+muse-bridge restart     # reload it (e.g. after editing config.json)
+muse-bridge status      # agent loaded? bridge pid? health?
+muse-bridge foreground  # run it in this terminal instead (stop first if open)
 ```
 
-It wraps `launchctl load`/`unload` of `com.luna.bridge` plus a health
+It wraps `launchctl load`/`unload` of `com.muse.bridge` plus a health
 check (`status` exits non-zero when the bridge is down). Running
 `start`/`stop` twice is harmless. If your `bind_mode` does not listen
 on 127.0.0.1 (`tailscale`/`lan`/`custom`), point the health check at
 the "Listening on" address once per call:
-`LUNA_BRIDGE_HEALTH_URL=http://<that-address>:8787/health luna-bridge status`.
+`MUSE_BRIDGE_HEALTH_URL=http://<that-address>:8787/health muse-bridge status`.
 `foreground` is the exception to the launchd wrapping: it runs
 `node server.js --foreground` right here in your terminal (logs to
 stdout, Ctrl+C stops it — the bridge is offline from that moment).
 It refuses to start while the background agent is loaded, so
-`luna-bridge stop` first if the bridge is open.
+`muse-bridge stop` first if the bridge is open.
 
 To remove the bridge entirely:
 
 ```sh
-sh scripts/uninstall.sh   # unloads the agent, removes plist + luna-bridge command
+sh scripts/uninstall.sh   # unloads the agent, removes plist + muse-bridge command
 ```
 
-## 6. Confirm Luna can reach it
+## 6. Confirm Muse can reach it
 
 Use the address of the transport you chose — the startup log prints it
 (`Listening on: ...` plus the "How a client reaches it" line). For the
-Tailscale transport, from the VM through the Tailscale tunnel (Luna
+Tailscale transport, from the VM through the Tailscale tunnel (Muse
 does this; shown here so you can check it yourself from any machine on
 the tailnet):
 
@@ -240,18 +240,18 @@ those flags entirely) and restart the server.
 
 ## Shared sessions: attaching from your terminal
 
-When Luna starts a shared session, she sends you the attach command from
+When Muse starts a shared session, she sends you the attach command from
 its response:
 
 ```sh
-tmux attach -t luna-<id>
+tmux attach -t muse-<id>
 ```
 
 You land inside the agent's terminal and can watch or type. Detach with
-`Ctrl-b d` — the session keeps running, and Luna can still read it. List
+`Ctrl-b d` — the session keeps running, and Muse can still read it. List
 your live sessions any time with `tmux ls`.
 
-**One-driver rule: only one party types at a time.** If Luna is driving
+**One-driver rule: only one party types at a time.** If Muse is driving
 (she only types when you explicitly ask her to), keep your hands off the
 keyboard in the attached terminal, and vice versa — both sides type into
 the same prompt, so simultaneous typing garbles the input. When in doubt,
@@ -259,7 +259,7 @@ say who drives.
 
 ## Troubleshooting
 
-- **Server starts but Luna cannot reach it**: check the startup log — it
+- **Server starts but Muse cannot reach it**: check the startup log — it
   prints the active `bind_mode`, the addresses it listens on, and how a
   client reaches it. If it only lists 127.0.0.1 but you expected remote
   access, your transport is not in place: with `bind_mode: "auto"` that
@@ -270,9 +270,9 @@ say who drives.
   could not be satisfied (e.g. `"tailscale"` with no Tailscale IP);
   the message says how to fix it.
 - **401 Unauthorized**: the token is wrong. The token lives in
-  `~/.config/luna-bridge/token` (or `LUNA_BRIDGE_TOKEN` / `config.json`).
+  `~/.config/muse-bridge/token` (or `MUSE_BRIDGE_TOKEN` / `config.json`).
   Delete the token file and restart to generate a new one — then share the
-  new one with Luna.
+  new one with Muse.
 - **Job fails immediately with "muse binary not found"**: the server's
   launchd environment has a minimal PATH. Set `muse_bin` in `config.json`
   to the full path (find it with `command -v muse` in your terminal).
@@ -288,8 +288,8 @@ say who drives.
   (`POST /jobs/:id/cancel`), then either set both layers to auto-review
   (the judge clears routine approvals), use `unrestricted` deliberately,
   or run the task as a live shared tmux session, where the prompt is
-  visible in the pane and can be answered (by you attached, or by Luna
-  typing on your explicit word). Luna switches the mode only on your
+  visible in the pane and can be answered (by you attached, or by Muse
+  typing on your explicit word). Muse switches the mode only on your
   explicit word.
 - **Job runs forever with no output at all**: treat it as stalled even
   though `approval_blocked` stays `false` — the detector is a regex over
@@ -298,21 +298,21 @@ say who drives.
   `max_model_steps` (default 300) caps how much work a run can do, but
   it does not unstick a run waiting on an approval or hung at startup.
 - **Port already in use**: the bridge is probably already running —
-  in the background (`luna-bridge status`) or in a foreground terminal
-  somewhere. Stop the other copy first (`luna-bridge stop`, or Ctrl+C
-  in the foreground window); `luna-bridge foreground` refuses on its
+  in the background (`muse-bridge status`) or in a foreground terminal
+  somewhere. Stop the other copy first (`muse-bridge stop`, or Ctrl+C
+  in the foreground window); `muse-bridge foreground` refuses on its
   own when the background agent is loaded. If nothing should be
   running, change `port` in `config.json` and reinstall
   (`sh scripts/uninstall.sh && sh scripts/install.sh`).
-- **Luna cannot reach the Mac because it was asleep**: set
-  `keep_awake: true` in `config.json` and run `luna-bridge restart`.
+- **Muse cannot reach the Mac because it was asleep**: set
+  `keep_awake: true` in `config.json` and run `muse-bridge restart`.
   The startup log then shows a `keep-awake is on` line, and the Mac
   stops idle-sleeping while the bridge runs (battery/heat trade-off —
   see step 3). If the log instead says keep-awake is macOS-only or
   `caffeinate` failed, the bridge still runs; only the assertion is off.
-- **`luna-bridge: command not found`**: `~/.local/bin` is not on your
+- **`muse-bridge: command not found`**: `~/.local/bin` is not on your
   `PATH` yet — add it (the installer prints the exact line), or call
-  the command by full path: `~/.local/bin/luna-bridge status`.
+  the command by full path: `~/.local/bin/muse-bridge status`.
 
 ## Appendix: test coverage in detail
 
@@ -320,7 +320,7 @@ This is the full breakdown behind the summary in README.md ("Testing").
 On a machine without Muse Code, the suite uses a fake `muse` executable:
 
 ```sh
-sh test/run-tests.sh   # 260 checks: health, auth, upload, jobs, model/effort, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, luna-bridge CLI, --foreground, allowed_workdirs
+sh test/run-tests.sh   # 260 checks: health, auth, upload, jobs, model/effort, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, muse-bridge CLI, --foreground, allowed_workdirs
 ```
 
 What is tested: health (no auth), 401 on missing/wrong token, upload (201,
@@ -333,7 +333,7 @@ the `muse` argv for jobs and sessions, every effort tier accepted, bad
 effort/model → 400, `meta.json` records the effective values, config
 `default_model`/`default_effort` apply with per-request override), plus
 shared sessions (real tmux + fake muse in interactive mode):
-auth/validation 401s and 400s, create (201, `luna-<id>` name, attach
+auth/validation 401s and 400s, create (201, `muse-<id>` name, attach
 command, `alive`, meta.json on disk), pane read with the idle hint, input
 typed into the pane and echoed back, kill (dead, pane → 404, tmux session
 really gone), and survival across a bridge restart (still listed, still
@@ -364,7 +364,7 @@ Keep-awake is covered twice as well: unit checks of the exported
 crashes when spawn fails or the child errors, shutdown kills the
 child), and — on macOS — an end-to-end spawn with a fake `caffeinate`
 on PATH (spawned with the server's pid when `keep_awake` is true, never
-when off, gone after the server is terminated). The `luna-bridge` CLI
+when off, gone after the server is terminated). The `muse-bridge` CLI
 is tested against a fake `launchctl`/`curl` on PATH with a temp `HOME`
 (the real launchd agent is never touched): start/stop/restart/status
 including already-running/stopped idempotence, the status pid + health

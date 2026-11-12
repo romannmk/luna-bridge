@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  muse-bridge launchd agent (macOS).
+  Installed to ~/Library/LaunchAgents/com.muse.bridge.plist by scripts/install.sh.
+  Replace __BRIDGE_DIR__ with the directory containing server.js,
+  and __NODE__ with the node binary if `node` is not on the default PATH
+  (e.g. /opt/homebrew/bin/node). KeepAlive restarts the server if it exits.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.muse.bridge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>__BRIDGE_DIR__/server.js</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__BRIDGE_DIR__</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__BRIDGE_DIR__/logs/bridge.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__BRIDGE_DIR__/logs/bridge.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

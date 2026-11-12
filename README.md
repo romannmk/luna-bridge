@@ -1,8 +1,8 @@
 <div align="center">
 
-<p align="center"><img src="assets/logo.png" width="160" alt="luna-bridge logo"></p>
+<p align="center"><img src="assets/logo.png" width="160" alt="muse-bridge logo"></p>
 
-<h1>luna-bridge</h1>
+<h1>muse-bridge</h1>
 
 <p><strong>Send a coding task from anywhere. Your Mac does the work.</strong><br>
 A tiny, token-gated HTTP bridge that runs your terminal coding agent on your own Mac — you decide when it is open.</p>
@@ -29,7 +29,7 @@ A tiny, token-gated HTTP bridge that runs your terminal coding agent on your own
 
 ## What it is
 
-luna-bridge is a small HTTP server (Node.js stdlib only, **zero
+muse-bridge is a small HTTP server (Node.js stdlib only, **zero
 dependencies**, no `npm install`) that runs on a developer's Mac and lets a
 remote client — an AI agent, a script, or a phone app relaying through one
 — run coding tasks with the terminal coding agent installed on that Mac.
@@ -38,7 +38,7 @@ online while it runs, offline the moment it stops, one terminal command
 either way.
 
 ```
-Client (e.g. an AI agent) → curl → private transport → luna-bridge (Mac)
+Client (e.g. an AI agent) → curl → private transport → muse-bridge (Mac)
                                                         → muse exec (headless)
                                                         → result back to client
 ```
@@ -47,7 +47,7 @@ The flow it was built for: the developer sends a task from their phone, a
 remote agent passes it (screenshots included) to the bridge, the coding
 agent does the work on the Mac, and the agent reports back with the result
 and the "open a draft PR?" question — nothing is ever merged
-automatically. The examples name the original client agent "Luna"; any
+automatically. The examples name the original client agent "Muse"; any
 HTTP client that can send a Bearer [REDACTED] works the same way. Why HTTP and
 not SSH? In the original setup SSH to the Mac was blocked by an egress
 proxy that only forwards TLS/HTTPS, while HTTPS through a private tunnel
@@ -64,8 +64,8 @@ signed in (plus tmux if you want shared sessions). Full step-by-step:
 1. **Clone and configure**
 
    ```sh
-   git clone https://github.com/romannmk/luna-bridge.git
-   cd luna-bridge
+   git clone https://github.com/romannmk/muse-bridge.git
+   cd muse-bridge
    cp config.example.json config.json
    ```
 
@@ -74,11 +74,11 @@ signed in (plus tmux if you want shared sessions). Full step-by-step:
    — your transport choice (see
    [Choosing a transport](#choosing-a-transport)).
 
-2. **Install and start** (launchd agent + `luna-bridge` command)
+2. **Install and start** (launchd agent + `muse-bridge` command)
 
    ```sh
    sh scripts/install.sh
-   luna-bridge status
+   muse-bridge status
    curl http://127.0.0.1:8787/health
    # {"ok":true,"version":"0.1.0","mode":"auto-review"}
    ```
@@ -90,11 +90,11 @@ signed in (plus tmux if you want shared sessions). Full step-by-step:
 
 3. **Send your first job.** On first run with no token configured, the
    server generates a strong Bearer [REDACTED] and saves it to
-   `~/.config/luna-bridge/token`. It is never printed or logged — clients
+   `~/.config/muse-bridge/token`. It is never printed or logged — clients
    read it from that file; never paste secrets in chat.
 
    ```sh
-   TOKEN="$(cat ~/.config/luna-bridge/token)"
+   TOKEN="$(cat ~/.config/muse-bridge/token)"
    curl -X POST -H "Authorization: Bearer $TOKEN" \
      -H 'Content-Type: application/json' \
      -d '{"prompt":"Run the test suite and summarize any failures.","workdir":"/Users/you/Projects/my-app"}' \
@@ -121,7 +121,7 @@ back.
 </td>
 <td valign="top" width="50%">
 
-**[Shared sessions — watch & co-drive](#shared-sessions-owner--luna-in-one-terminal)**
+**[Shared sessions — watch & co-drive](#shared-sessions-owner--muse-in-one-terminal)**
 
 The interactive agent TUI inside tmux: you attach from your terminal, the
 client reads the pane and types only when you ask. One driver at a time.
@@ -170,7 +170,7 @@ run stalled on an approval request (heuristic marker scan — a job that
 hangs with no output at all is invisible to it; see
 [Permission modes](#permission-modes)).
 
-### Shared sessions (owner + Luna in one terminal)
+### Shared sessions (owner + Muse in one terminal)
 
 When the owner wants to sit with the agent — see what it does, take over
 typing, hand control back — the client starts a shared session instead of
@@ -181,21 +181,21 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"Continue the checkout work; I am watching.","workdir":"/Users/you/Projects/my-app"}' \
   "http://<mac-address>:8787/sessions"
-# -> {"session_id":"…","tmux_session":"luna-…",
-#     "attach_command":"tmux attach -t luna-…", …}
+# -> {"session_id":"…","tmux_session":"muse-…",
+#     "attach_command":"tmux attach -t muse-…", …}
 ```
 
-The bridge runs `tmux new-session -d -s luna-<id> -c <workdir> muse <mode
+The bridge runs `tmux new-session -d -s muse-<id> -c <workdir> muse <mode
 flags> "<prompt>"` — the interactive `muse` TUI with the same mode flags
 as jobs (`unrestricted` → `--yolo`, always plus `--trust-workspace` so
 the trust prompt never blocks a shared session).
 
 - **Owner attaches** from any terminal on the Mac with the returned
-  `attach_command` (`tmux attach -t luna-<id>`). Detach with `Ctrl-b d`;
+  `attach_command` (`tmux attach -t muse-<id>`). Detach with `Ctrl-b d`;
   the session keeps running.
-- **Luna reads** with `GET /sessions/:id/pane` (pane text plus an `idle`
+- **Muse reads** with `GET /sessions/:id/pane` (pane text plus an `idle`
   hint) and polls it the same way she polls jobs.
-- **Luna types** with `POST /sessions/:id/input` (`{text}` sends the text
+- **Muse types** with `POST /sessions/:id/input` (`{text}` sends the text
   plus Enter via `tmux send-keys`) — **only when the owner explicitly
   asks**. Otherwise she only reads.
 - **Either side ends it** with `POST /sessions/:id/kill`.
@@ -225,7 +225,7 @@ rejected):
 Every run also gets `--trust-workspace` and `--max-model-steps <cap>`
 when the cap is > 0. `GET /mode` reports the current mode (plus the Muse
 Code default profile from `~/.config/muse/settings.json`, best effort);
-`POST /mode` changes it for subsequently started jobs (persisted). Luna
+`POST /mode` changes it for subsequently started jobs (persisted). Muse
 only switches the mode after the user explicitly allows it — never
 silently.
 
@@ -269,7 +269,7 @@ can read its output and cancel it, nothing more. So:
 - Approving from your phone works **only through a live shared tmux
   session**: the approval prompt is visible in the pane
   (`GET /sessions/:id/pane`), and it can be answered there — by you
-  attached from a terminal, or by Luna typing the answer via
+  attached from a terminal, or by Muse typing the answer via
   `POST /sessions/:id/input` on your explicit word (one-driver rule
   applies). There is no equivalent for a headless job.
 
@@ -336,20 +336,20 @@ addresses).
 ## Opening and closing the bridge
 
 **Background by default.** `scripts/install.sh` installs the bridge as a
-launchd agent (`com.luna.bridge`): it starts at login, launchd restarts
+launchd agent (`com.muse.bridge`): it starts at login, launchd restarts
 it if it exits (`KeepAlive`), logs go to `logs/bridge.out.log` /
 `logs/bridge.err.log`. There is no cloud component and nothing always-on:
 **online while it is running, offline when it is stopped** — the same
 presence semantics as Codex (app open = online, app closed = offline).
-The installer also puts a small `luna-bridge` command in `~/.local/bin`
+The installer also puts a small `muse-bridge` command in `~/.local/bin`
 (it says so if that directory is not on your `PATH` yet). Day to day:
 
 ```sh
-luna-bridge start       # open the bridge (load the launchd agent, then check health)
-luna-bridge stop        # close the bridge (unload the launchd agent)
-luna-bridge restart     # unload + load (e.g. after editing config.json)
-luna-bridge status      # agent loaded? bridge pid? health?
-luna-bridge foreground  # run the bridge in this terminal instead (see below)
+muse-bridge start       # open the bridge (load the launchd agent, then check health)
+muse-bridge stop        # close the bridge (unload the launchd agent)
+muse-bridge restart     # unload + load (e.g. after editing config.json)
+muse-bridge status      # agent loaded? bridge pid? health?
+muse-bridge foreground  # run the bridge in this terminal instead (see below)
 ```
 
 `start`/`stop`/`restart`/`status` wrap `launchctl load`/`unload` plus a
@@ -357,15 +357,15 @@ luna-bridge foreground  # run the bridge in this terminal instead (see below)
 non-zero when the bridge is not loaded or not healthy. The health check
 defaults to `http://127.0.0.1:8787/health`; if your `bind_mode` does not
 listen on 127.0.0.1 (`tailscale`/`lan`/`custom`), point it at the
-"Listening on" address: `LUNA_BRIDGE_HEALTH_URL=http://<that-address>:8787/health luna-bridge status`
-(`LUNA_BRIDGE_PORT` overrides just the port). To remove the bridge
+"Listening on" address: `MUSE_BRIDGE_HEALTH_URL=http://<that-address>:8787/health muse-bridge status`
+(`MUSE_BRIDGE_PORT` overrides just the port). To remove the bridge
 entirely: `sh scripts/uninstall.sh`.
 
-**Foreground mode** (`luna-bridge foreground`) runs the same server
+**Foreground mode** (`muse-bridge foreground`) runs the same server
 attached to your terminal: logs to stdout, Ctrl+C (or closing the
 window) stops it — use it for a first run, debugging, or when you want
 the bridge open only while you are at the Mac. It refuses to start while
-the background agent is loaded (`luna-bridge stop` first). Under the hood
+the background agent is loaded (`muse-bridge stop` first). Under the hood
 it runs `node server.js --foreground`, which you can also start directly
 from the repo (`node server.js --help` lists the flags).
 
@@ -407,7 +407,7 @@ Example (from a remote client; use your transport's address):
 
 ```sh
 BRIDGE="http://<mac-address>:8787"   # e.g. your Mac's Tailscale IP (`tailscale ip`), LAN IP, or 127.0.0.1
-TOKEN="<Bearer [REDACTED]>"               # clients read it from ~/.config/luna-bridge/token on the Mac
+TOKEN="<Bearer [REDACTED]>"               # clients read it from ~/.config/muse-bridge/token on the Mac
 
 # upload a screenshot
 curl -X POST -H "Authorization: Bearer $TOKEN" \
@@ -442,8 +442,8 @@ example.
 | `data_dir` | `<server-dir>/data` | Runtime data: `inbox/` (uploads), `jobs/`, `sessions/` |
 | `default_workdir` | `null` | Working directory for jobs that omit `workdir` — set it (e.g. your main project dir) |
 | `allowed_workdirs` | `null` | Optional array of absolute paths (e.g. `["/Users/you/Projects"]`). When set and non-empty, `POST /jobs` and `POST /sessions` reject (403) any `workdir` — including the default — that is not equal to or inside one of these dirs, after `~` expansion, `..` normalization, and symlink resolution. `null`/absent/empty = no restriction. Start directory only: see [Security model](#security-model) |
-| `token` | `null` | Bearer [REDACTED] `null` = env `LUNA_BRIDGE_TOKEN`, else the token file, else generate one on first run |
-| `token_file` | `~/.config/luna-bridge/token` | Where a generated token is stored (0600) |
+| `token` | `null` | Bearer [REDACTED] `null` = env `MUSE_BRIDGE_TOKEN`, else the token file, else generate one on first run |
+| `token_file` | `~/.config/muse-bridge/token` | Where a generated token is stored (0600) |
 | `muse_bin` | `"muse"` | Agent CLI binary (Muse Code today; a full path or wrapper script also works). Resolved via `which` at startup, logged |
 | `tmux_bin` | `"tmux"` | tmux binary for shared sessions (resolved via `which` at startup, logged). Headless jobs never touch tmux |
 | `muse_args` | `[]` | Extra args appended to every `muse exec` call (after the mode flags), e.g. `["--model", "muse-spark-1.3"]` |
@@ -461,8 +461,8 @@ example.
 | `max_output_tail_bytes` | `204800` (200 KB) | In-memory/returned output tail per job |
 | `cancel_grace_ms` | `3000` | SIGTERM → SIGKILL delay on cancel |
 
-Environment overrides: `LUNA_BRIDGE_CONFIG` (config file path),
-`LUNA_BRIDGE_TOKEN` (Bearer [REDACTED]).
+Environment overrides: `MUSE_BRIDGE_CONFIG` (config file path),
+`MUSE_BRIDGE_TOKEN` (Bearer [REDACTED]).
 
 ## Security model
 
@@ -478,7 +478,7 @@ Full policy and private reporting: [SECURITY.md](SECURITY.md).
   table says — which is why the choice is explicit.
 - **Auth:** Bearer [REDACTED] on every endpoint except `GET /health`, compared
   in constant time. A generated token is saved to
-  `~/.config/luna-bridge/token` and never printed or logged.
+  `~/.config/muse-bridge/token` and never printed or logged.
 - **Execution allowlist:** the server only ever spawns the configured
   agent binary (plus tmux for sessions, and opt-in `caffeinate`). It
   never runs arbitrary shell commands from requests — direct `spawn`
@@ -505,7 +505,7 @@ Full policy and private reporting: [SECURITY.md](SECURITY.md).
   here.
 - **Logging:** requests are logged (method, path, job id). Prompts are
   never logged in full, the token never at all, in either mode.
-- **Revocation:** stop the bridge (`luna-bridge stop`, or
+- **Revocation:** stop the bridge (`muse-bridge stop`, or
   `sh scripts/uninstall.sh`), rotate the token (delete the token file,
   restart), or remove the device from the Tailscale admin console.
 
@@ -550,7 +550,7 @@ against real
 tmux (create, pane, input, kill, survival across a bridge restart),
 `bind_mode` transport binding (unit + end-to-end with a fake `tailscale`
 CLI), keep-awake (unit + end-to-end with a fake `caffeinate`), the
-`luna-bridge` CLI against fake `launchctl`/`curl`, and foreground mode.
+`muse-bridge` CLI against fake `launchctl`/`curl`, and foreground mode.
 Session tests are skipped with a note on machines without tmux. The full
 coverage breakdown lives in
 [SETUP.md § "Appendix: test coverage in detail"](SETUP.md#appendix-test-coverage-in-detail).
@@ -571,10 +571,10 @@ a remote client to the Mac.
 ```
 server.js                  the server (Node stdlib only, zero dependencies)
 config.example.json        example config (copy to config.json, never commit a real one)
-launchd/com.luna.bridge.plist   launchd agent sample
-scripts/install.sh         install + load the launchd agent, install the luna-bridge command
-scripts/luna-bridge        terminal command: start | stop | restart | status | foreground
-scripts/uninstall.sh       unload the launchd agent, remove the luna-bridge command
+launchd/com.muse.bridge.plist   launchd agent sample
+scripts/install.sh         install + load the launchd agent, install the muse-bridge command
+scripts/muse-bridge        terminal command: start | stop | restart | status | foreground
+scripts/uninstall.sh       unload the launchd agent, remove the muse-bridge command
 test/fake-muse.sh          TEST FIXTURE: pretends to be the muse CLI
 test/run-tests.sh          end-to-end tests (fake muse + curl): sh test/run-tests.sh
 docs/                      full setup guide (EN + RU)

@@ -1,4 +1,4 @@
-# Luna Bridge — complete guide: installation, day-to-day use, and going open source
+# Muse Bridge — complete guide: installation, day-to-day use, and going open source
 
 > English version. Russian version: [setup-guide-ru.md](setup-guide-ru.md).
 
@@ -9,7 +9,7 @@
 
 ## What it is and how it works
 
-Luna Bridge is a single `server.js` file in plain Node.js (standard library
+Muse Bridge is a single `server.js` file in plain Node.js (standard library
 only, zero dependencies, no build step). It runs on a Mac as a launchd agent
 (or in a terminal with `--foreground`) and does exactly three things:
 
@@ -29,7 +29,7 @@ Phone / chat (task + screenshot)
   Private transport ---------------+
   (Tailscale / LAN / tunnel / SSH) |
         v                          |
-  luna-bridge on the Mac :8787 ---+
+  muse-bridge on the Mac :8787 ---+
         |
         +-- muse exec "<task>"        -> headless job
         +-- tmux: interactive muse    -> shared session
@@ -96,8 +96,8 @@ bridge runs on localhost, so you can defer that choice.
 ### Step 2. Clone the project
 
 ```sh
-git clone https://github.com/romannmk/luna-bridge.git
-cd luna-bridge
+git clone https://github.com/romannmk/muse-bridge.git
+cd muse-bridge
 ```
 
 ### Step 3. Create your config
@@ -134,7 +134,7 @@ node server.js --foreground
 ```
 
 If no token exists yet, the server generates a strong one (32 random bytes,
-hex), saves it to `~/.config/luna-bridge/token` with mode `0600`, and logs
+hex), saves it to `~/.config/muse-bridge/token` with mode `0600`, and logs
 the file path. **The token value itself is never printed to stdout or the
 logs** (under launchd, stdout lands in a log file — printing it there would
 leak it).
@@ -150,7 +150,7 @@ Stop it with Ctrl+C.
 
 ### Step 5. Give the token to the client
 
-The client reads the token from `~/.config/luna-bridge/token` when it has
+The client reads the token from `~/.config/muse-bridge/token` when it has
 that access, or the owner passes the value once over a secure channel.
 Never publish, commit, or attach the token to an issue. To rotate it:
 delete the token file and restart the bridge — a new token is generated
@@ -162,19 +162,19 @@ and the old one stops working.
 sh scripts/install.sh
 ```
 
-The script fills real paths into `launchd/com.luna.bridge.plist`, copies it
-to `~/Library/LaunchAgents/com.luna.bridge.plist`, loads it, and installs
-the `luna-bridge` terminal command to `~/.local/bin`. Logs:
+The script fills real paths into `launchd/com.muse.bridge.plist`, copies it
+to `~/Library/LaunchAgents/com.muse.bridge.plist`, loads it, and installs
+the `muse-bridge` terminal command to `~/.local/bin`. Logs:
 `logs/bridge.out.log` and `logs/bridge.err.log` in the project folder.
 
 Day to day, open and close the bridge with that command:
 
 ```sh
-luna-bridge start       # open the bridge
-luna-bridge stop        # close the bridge
-luna-bridge restart     # reload (e.g. after editing config.json)
-luna-bridge status      # loaded? pid? health?
-luna-bridge foreground  # run in this terminal instead (stop first)
+muse-bridge start       # open the bridge
+muse-bridge stop        # close the bridge
+muse-bridge restart     # reload (e.g. after editing config.json)
+muse-bridge status      # loaded? pid? health?
+muse-bridge foreground  # run in this terminal instead (stop first)
 ```
 
 Remove everything with `sh scripts/uninstall.sh`.
@@ -224,12 +224,12 @@ access, your transport is not in place yet: check `bind_mode` and restart.
 ### A shared session (interactive, the owner can join)
 
 1. The agent creates a session: `POST /sessions` — the bridge starts the
-   interactive `muse` TUI inside the tmux session `luna-<id>` with the
+   interactive `muse` TUI inside the tmux session `muse-<id>` with the
    initial prompt.
 2. The owner joins the same live process on the Mac:
 
 ```sh
-tmux attach -t luna-<id>
+tmux attach -t muse-<id>
 ```
 
 Detach without stopping the session: `Ctrl-B`, then `D`. Sessions survive
@@ -365,8 +365,8 @@ cancel it (`POST /jobs/:id/cancel`) and read
 | `default_workdir` | `null` | Working directory for jobs that omit `workdir` |
 | `allowed_workdirs` | `null` | Optional array of absolute paths; when set and non-empty, jobs/sessions may only start in/under these dirs (else 403). Start directory only — the agent runs as your user and can `cd` elsewhere; see "Security" |
 | `default_model`, `default_effort` | `null` | Default model and effort tier |
-| `token` | `null` | Bearer token; `null` = env `LUNA_BRIDGE_TOKEN`, else the token file, else generate |
-| `token_file` | `~/.config/luna-bridge/token` | Where a generated token is stored (0600) |
+| `token` | `null` | Bearer token; `null` = env `MUSE_BRIDGE_TOKEN`, else the token file, else generate |
+| `token_file` | `~/.config/muse-bridge/token` | Where a generated token is stored (0600) |
 | `muse_bin` | `muse` | Path to the Muse Code binary |
 | `tmux_bin` | `tmux` | Path to the tmux binary (shared sessions only) |
 | `muse_args` | `[]` | Extra args appended to every agent invocation |
@@ -382,7 +382,7 @@ cancel it (`POST /jobs/:id/cancel`) and read
 | `max_output_tail_bytes` | 200 KB | Output tail kept in memory and responses |
 | `cancel_grace_ms` | `3000` | SIGTERM → SIGKILL delay on cancel |
 
-Environment: `LUNA_BRIDGE_CONFIG` (config path), `LUNA_BRIDGE_TOKEN`
+Environment: `MUSE_BRIDGE_CONFIG` (config path), `MUSE_BRIDGE_TOKEN`
 (token).
 
 ## Transports: Tailscale is optional
@@ -442,7 +442,7 @@ access control.
 - **Logs:** requests are logged without full prompts (only a short preview
   in metadata) and without the token. On disk each job keeps
   `prompt.txt`, `log.txt`, and `meta.json`.
-- **Revoking access:** stop the bridge (`luna-bridge stop`), rotate the
+- **Revoking access:** stop the bridge (`muse-bridge stop`), rotate the
   token (delete the token file and restart), or remove the device from
   your private network.
 - **`unrestricted` is a deliberate risk:** it (`--yolo`) means a
@@ -462,9 +462,9 @@ access control.
 server.js                        the server (Node stdlib only)
 config.example.json              example config
 config.json                      your config (gitignored)
-launchd/com.luna.bridge.plist    launchd agent template
+launchd/com.muse.bridge.plist    launchd agent template
 scripts/install.sh               install + load the agent, install the CLI
-scripts/luna-bridge              start | stop | restart | status | foreground
+scripts/muse-bridge              start | stop | restart | status | foreground
 scripts/uninstall.sh             unload the agent, remove the CLI
 test/fake-muse.sh                fixture pretending to be the muse CLI
 test/run-tests.sh                end-to-end tests (fake muse + curl)
@@ -480,7 +480,7 @@ SECURITY.md, LICENSE             vulnerability reporting; MIT license
 
 Tests run without a real Muse Code install: `sh test/run-tests.sh`
 (jobs, sessions, model/effort, auth, upload, cancel, validation,
-transports, keep-awake, the `luna-bridge` CLI, and foreground mode).
+transports, keep-awake, the `muse-bridge` CLI, and foreground mode).
 
 ## Going open source: checklist and status
 
@@ -495,7 +495,7 @@ transports, keep-awake, the `luna-bridge` CLI, and foreground mode).
    replace with neutral examples (`/Users/you/Projects/my-app`,
    "your AI agent").
 4. **One public name** — repository, project, and config use
-   `luna-bridge`; the launchd label is `com.luna.bridge`. `Muse Code`
+   `muse-bridge`; the launchd label is `com.muse.bridge`. `Muse Code`
    appears only as the name of Meta's product.
 5. **Transport is a choice, not a dependency** — `bind_mode` with a
    localhost baseline and documented transport recipes (implemented; see

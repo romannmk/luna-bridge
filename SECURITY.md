@@ -16,7 +16,7 @@ other secret in a report. A redacted log excerpt is enough.
 
 ## Security model in brief
 
-luna-bridge is a small HTTP server that runs a coding-agent CLI on the
+muse-bridge is a small HTTP server that runs a coding-agent CLI on the
 owner's own machine. Every endpoint except `GET /health` requires an
 `Authorization: Bearer <token>` header; the token is a 32-byte random value
 stored in a `0600` file, compared in constant time, and never printed or

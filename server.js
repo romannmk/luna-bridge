@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * luna-bridge — v0.1.0
+ * muse-bridge — v0.1.0
  *
  * A tiny HTTP server that runs on the user's Mac and lets a remote client
  * (an AI agent, a script — anything that can send HTTP with a Bearer token)
@@ -17,7 +17,7 @@
  * Stack: Node.js stdlib only. Zero dependencies, no build step, no npm install.
  * Runs with `node server.js` (also works under Bun). Day to day it runs in
  * the background under launchd (scripts/install.sh); `node server.js
- * --foreground` (or `luna-bridge foreground`) runs the same server attached
+ * --foreground` (or `muse-bridge foreground`) runs the same server attached
  * to your terminal instead, with logs on stdout — Ctrl+C stops it.
  *
  * SECURITY MODEL (read this before changing anything):
@@ -43,8 +43,8 @@
  *   user) and is out of scope here. Unset/empty = no restriction.
  *
  * Config: config.json next to this file (see config.example.json). The token
- * comes from LUNA_BRIDGE_TOKEN env, config.json `token`, or a token file
- * (~/.config/luna-bridge/token). With none configured, a strong token is
+ * comes from MUSE_BRIDGE_TOKEN env, config.json `token`, or a token file
+ * (~/.config/muse-bridge/token). With none configured, a strong token is
  * generated on first run and saved to that file (mode 0600). The token
  * value is never printed or logged: stdout lands in logs/bridge.out.log
  * under launchd, so printing it there would leak it into a log file.
@@ -118,9 +118,9 @@ const DEFAULTS = {
   bind_host: null,
   // Base directory for runtime data (inbox/, jobs/). Default: <server-dir>/data
   data_dir: null,
-  // Token: null = use env LUNA_BRIDGE_TOKEN, else token file, else generate.
+  // Token: null = use env MUSE_BRIDGE_TOKEN, else token file, else generate.
   token: null,
-  token_file: null, // default: ~/.config/luna-bridge/token
+  token_file: null, // default: ~/.config/muse-bridge/token
   // Default working directory for jobs when the request omits workdir.
   // No hardcoded user-specific default here on purpose: set it in config.json.
   default_workdir: null,
@@ -181,7 +181,7 @@ const DEFAULTS = {
 };
 
 function loadConfig() {
-  const configPath = process.env.LUNA_BRIDGE_CONFIG
+  const configPath = process.env.MUSE_BRIDGE_CONFIG
     || path.join(SERVER_DIR, 'config.json');
   let fileConfig = {};
   if (fs.existsSync(configPath)) {
@@ -204,7 +204,7 @@ function loadConfig() {
   cfg.jobsDir = path.join(cfg.dataDir, 'jobs');
   cfg.sessionsDir = path.join(cfg.dataDir, 'sessions');
   cfg.tokenFile = cfg.token_file
-    || path.join(os.homedir(), '.config', 'luna-bridge', 'token');
+    || path.join(os.homedir(), '.config', 'muse-bridge', 'token');
   // Validate the workdir allowlist eagerly: a malformed security setting
   // must fail loudly at startup, never silently disable the restriction.
   try {
@@ -232,7 +232,7 @@ function saveConfig() {
 // ---------------------------------------------------------------------------
 
 function resolveToken() {
-  if (process.env.LUNA_BRIDGE_TOKEN) return process.env.LUNA_BRIDGE_TOKEN;
+  if (process.env.MUSE_BRIDGE_TOKEN) return process.env.MUSE_BRIDGE_TOKEN;
   if (config.token) return config.token;
   try {
     if (fs.existsSync(config.tokenFile)) {
@@ -568,7 +568,7 @@ function resolveBindHosts(cfg, detected) {
         throw new Error(`bind_host ${JSON.stringify(bindHost)} is not a valid IP address or hostname. Fix: set bind_host in config.json to a valid IP (e.g. "192.168.1.10") or hostname (e.g. "mac.local").`);
       }
       if (bindHost === '0.0.0.0' || bindHost === '::') {
-        throw new Error(`bind_host ${JSON.stringify(bindHost)} means "every network interface" — luna-bridge never binds to all interfaces. Fix: set bind_host to one specific IP or hostname.`);
+        throw new Error(`bind_host ${JSON.stringify(bindHost)} means "every network interface" — muse-bridge never binds to all interfaces. Fix: set bind_host to one specific IP or hostname.`);
       }
       hosts = [bindHost];
       break;
@@ -1007,15 +1007,15 @@ function listJobs() {
 // Unlike headless jobs (one-shot `muse exec` with piped stdout), a shared
 // session runs the interactive `muse` TUI inside a detached tmux session:
 //
-//   tmux new-session -d -s luna-<id> -c <workdir> muse <mode flags> "<prompt>"
+//   tmux new-session -d -s muse-<id> -c <workdir> muse <mode flags> "<prompt>"
 //
-// The owner attaches from a terminal on the Mac (`tmux attach -t luna-<id>`)
-// and Luna reads the pane remotely (`tmux capture-pane -p -t luna-<id>`).
+// The owner attaches from a terminal on the Mac (`tmux attach -t muse-<id>`)
+// and Muse reads the pane remotely (`tmux capture-pane -p -t muse-<id>`).
 // The tmux server is independent of this bridge process, so sessions survive
 // a bridge restart: every read reconciles the recorded status with live
 // `tmux has-session` state.
 //
-// ONE-DRIVER RULE: only one party types at a time. Luna sends input only
+// ONE-DRIVER RULE: only one party types at a time. Muse sends input only
 // when the owner explicitly asks — otherwise she only reads the pane.
 // ---------------------------------------------------------------------------
 
@@ -1030,7 +1030,7 @@ function newSessionId() {
 }
 
 function tmuxSessionName(id) {
-  return `luna-${id}`;
+  return `muse-${id}`;
 }
 
 function attachCommand(id) {
@@ -1455,7 +1455,7 @@ async function handleSessionInput(req, res, s) {
   if (s.status !== 'alive') {
     return sendError(res, 404, 'session is not alive');
   }
-  // ONE-DRIVER RULE (see section header): Luna calls this only when the
+  // ONE-DRIVER RULE (see section header): Muse calls this only when the
   // owner explicitly asks her to type into the shared session.
   const r = await sendSessionInput(s, body.text);
   if (!r.ok) return sendError(res, 500, r.error);
@@ -1651,7 +1651,7 @@ async function main(opts = {}) {
 
   const museBin = await resolveMuseBin();
   const tmuxBin = await resolveTmuxBin();
-  log(`luna-bridge v${VERSION} starting`);
+  log(`muse-bridge v${VERSION} starting`);
   if (opts.foreground) {
     log('[env] foreground mode: running in this terminal, logs to stdout (Ctrl+C to stop)');
   }
