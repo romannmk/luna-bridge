@@ -1,15 +1,15 @@
 #!/bin/sh
-# luna-bridge install script (macOS).
+# muse-bridge install script (macOS).
 # - Creates runtime dirs, installs the launchd agent, loads it.
-# - Installs the `luna-bridge` terminal command to ~/.local/bin (start/stop/
+# - Installs the `muse-bridge` terminal command to ~/.local/bin (start/stop/
 #   restart/status/foreground for opening and closing the bridge day to day).
 # - Does NOT start the server in the foreground; launchd keeps it running.
 # Run from the repo root:  sh scripts/install.sh
 set -eu
 
 BRIDGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PLIST_SRC="$BRIDGE_DIR/launchd/com.luna.bridge.plist"
-PLIST_DST="$HOME/Library/LaunchAgents/com.luna.bridge.plist"
+PLIST_SRC="$BRIDGE_DIR/launchd/com.muse.bridge.plist"
+PLIST_DST="$HOME/Library/LaunchAgents/com.muse.bridge.plist"
 NODE_BIN="$(command -v node || echo /usr/bin/node)"
 
 mkdir -p "$BRIDGE_DIR/data/inbox" "$BRIDGE_DIR/data/jobs" "$BRIDGE_DIR/logs"
@@ -63,11 +63,11 @@ sed -e "s|__BRIDGE_DIR__|$BRIDGE_DIR|g" -e "s|__NODE__|$NODE_BIN|g" \
 launchctl unload "$PLIST_DST" 2>/dev/null || true
 launchctl load "$PLIST_DST"
 
-# Install the `luna-bridge` terminal command (open/close the bridge day to
+# Install the `muse-bridge` terminal command (open/close the bridge day to
 # day) to a per-user PATH location — no sudo, matching the launchd agent.
-CLI_DST="$HOME/.local/bin/luna-bridge"
+CLI_DST="$HOME/.local/bin/muse-bridge"
 mkdir -p "$HOME/.local/bin"
-cp "$BRIDGE_DIR/scripts/luna-bridge" "$CLI_DST"
+cp "$BRIDGE_DIR/scripts/muse-bridge" "$CLI_DST"
 chmod +x "$CLI_DST"
 echo "Installed terminal command: $CLI_DST"
 case ":$PATH:" in
@@ -78,12 +78,12 @@ case ":$PATH:" in
     echo "  Until then, call it by full path: $CLI_DST status" ;;
 esac
 
-echo "luna-bridge installed and loaded."
+echo "muse-bridge installed and loaded."
 echo "Open/close the bridge from the terminal:"
-echo "  luna-bridge start     open the bridge"
-echo "  luna-bridge stop      close the bridge"
-echo "  luna-bridge restart   reload it (e.g. after editing config.json)"
-echo "  luna-bridge status    show loaded/pid/health"
-echo "  luna-bridge foreground  run it in this terminal instead (logs to stdout, Ctrl+C stops; stop the background bridge first)"
-echo "Check it: luna-bridge status (or curl http://127.0.0.1:8787/health; for tailscale/lan/custom use the address printed as \"Listening on\" in logs/bridge.out.log)"
-echo "First-run token is saved to ~/.config/luna-bridge/token; Luna reads it from that file when needed."
+echo "  muse-bridge start     open the bridge"
+echo "  muse-bridge stop      close the bridge"
+echo "  muse-bridge restart   reload it (e.g. after editing config.json)"
+echo "  muse-bridge status    show loaded/pid/health"
+echo "  muse-bridge foreground  run it in this terminal instead (logs to stdout, Ctrl+C stops; stop the background bridge first)"
+echo "Check it: muse-bridge status (or curl http://127.0.0.1:8787/health; for tailscale/lan/custom use the address printed as \"Listening on\" in logs/bridge.out.log)"
+echo "First-run token is saved to ~/.config/muse-bridge/token; Muse reads it from that file when needed."

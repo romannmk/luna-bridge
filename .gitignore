@@ -1,4 +1,4 @@
-# luna-bridge: never commit runtime state or secrets.
+# muse-bridge: never commit runtime state or secrets.
 config.json
 token
 .env

@@ -1,33 +1,33 @@
 #!/bin/sh
-# luna-bridge — open/close the bridge from the terminal (macOS).
+# muse-bridge — open/close the bridge from the terminal (macOS).
 #
 # Thin wrapper around the launchd agent installed by scripts/install.sh
-# (label com.luna.bridge, plist in ~/Library/LaunchAgents). Dependency-free:
+# (label com.muse.bridge, plist in ~/Library/LaunchAgents). Dependency-free:
 # POSIX shell + launchctl + curl only.
 #
-#   luna-bridge start       open the bridge   (launchctl load + health check)
-#   luna-bridge stop        close the bridge  (launchctl unload)
-#   luna-bridge restart     unload + load     (e.g. after editing config.json)
-#   luna-bridge status      loaded? pid? health?
-#   luna-bridge foreground  run attached to this terminal, logs to stdout
+#   muse-bridge start       open the bridge   (launchctl load + health check)
+#   muse-bridge stop        close the bridge  (launchctl unload)
+#   muse-bridge restart     unload + load     (e.g. after editing config.json)
+#   muse-bridge status      loaded? pid? health?
+#   muse-bridge foreground  run attached to this terminal, logs to stdout
 #                           (Ctrl+C stops it; the launchd agent stays unloaded)
 #
 # Environment overrides:
-#   LUNA_BRIDGE_PLIST       plist path (default ~/Library/LaunchAgents/com.luna.bridge.plist)
-#   LUNA_BRIDGE_PORT        port for the health check (default 8787)
-#   LUNA_BRIDGE_HEALTH_URL  full health URL; set this when bind_mode does not
+#   MUSE_BRIDGE_PLIST       plist path (default ~/Library/LaunchAgents/com.muse.bridge.plist)
+#   MUSE_BRIDGE_PORT        port for the health check (default 8787)
+#   MUSE_BRIDGE_HEALTH_URL  full health URL; set this when bind_mode does not
 #                           listen on 127.0.0.1 (tailscale/lan/custom)
-#   LUNA_BRIDGE_SERVER      server.js path for `foreground` (default: next to
+#   MUSE_BRIDGE_SERVER      server.js path for `foreground` (default: next to
 #                           this script's repo, else taken from the plist)
-#   LUNA_BRIDGE_NODE        node binary for `foreground` (default: node)
+#   MUSE_BRIDGE_NODE        node binary for `foreground` (default: node)
 set -u
 
-LABEL="com.luna.bridge"
-PLIST="${LUNA_BRIDGE_PLIST:-$HOME/Library/LaunchAgents/com.luna.bridge.plist}"
-HEALTH_URL="${LUNA_BRIDGE_HEALTH_URL:-http://127.0.0.1:${LUNA_BRIDGE_PORT:-8787}/health}"
+LABEL="com.muse.bridge"
+PLIST="${MUSE_BRIDGE_PLIST:-$HOME/Library/LaunchAgents/com.muse.bridge.plist}"
+HEALTH_URL="${MUSE_BRIDGE_HEALTH_URL:-http://127.0.0.1:${MUSE_BRIDGE_PORT:-8787}/health}"
 
 usage() {
-  echo "usage: luna-bridge <start|stop|restart|status|foreground>"
+  echo "usage: muse-bridge <start|stop|restart|status|foreground>"
   echo "  start       open the bridge (load the launchd agent, then check health)"
   echo "  stop        close the bridge (unload the launchd agent)"
   echo "  restart     unload + load (e.g. after editing config.json)"
@@ -65,19 +65,19 @@ wait_health() {
 }
 
 health_ok_line() {
-  echo "luna-bridge: health OK — $HEALTH_URL -> $HEALTH_BODY"
+  echo "muse-bridge: health OK — $HEALTH_URL -> $HEALTH_BODY"
 }
 
 health_fail_line() {
-  echo "luna-bridge: health check failed — no answer from $HEALTH_URL"
+  echo "muse-bridge: health check failed — no answer from $HEALTH_URL"
   echo "  The bridge may still be starting, or bind_mode may not listen on"
-  echo "  this address (tailscale/lan/custom) — then set LUNA_BRIDGE_HEALTH_URL"
+  echo "  this address (tailscale/lan/custom) — then set MUSE_BRIDGE_HEALTH_URL"
   echo "  to the \"Listening on\" address from logs/bridge.out.log."
 }
 
 require_plist() {
   if [ ! -f "$PLIST" ]; then
-    echo "luna-bridge: launchd agent not installed (no plist at $PLIST)." >&2
+    echo "muse-bridge: launchd agent not installed (no plist at $PLIST)." >&2
     echo "  Run the installer from the repo directory first: sh scripts/install.sh" >&2
     exit 1
   fi
@@ -87,13 +87,13 @@ cmd_start() {
   require_plist
   probe_launchd
   if [ "$LOADED" -eq 1 ]; then
-    echo "luna-bridge: already open (launchd agent $LABEL is loaded${PID:+, pid $PID})."
+    echo "muse-bridge: already open (launchd agent $LABEL is loaded${PID:+, pid $PID})."
   else
     if ! launchctl load "$PLIST"; then
-      echo "luna-bridge: launchctl load failed for $PLIST" >&2
+      echo "muse-bridge: launchctl load failed for $PLIST" >&2
       exit 1
     fi
-    echo "luna-bridge: opened (launchd agent $LABEL loaded)."
+    echo "muse-bridge: opened (launchd agent $LABEL loaded)."
   fi
   if wait_health; then
     health_ok_line
@@ -106,14 +106,14 @@ cmd_start() {
 cmd_stop() {
   probe_launchd
   if [ "$LOADED" -eq 0 ]; then
-    echo "luna-bridge: already stopped (launchd agent $LABEL is not loaded)."
+    echo "muse-bridge: already stopped (launchd agent $LABEL is not loaded)."
     exit 0
   fi
   if ! launchctl unload "$PLIST"; then
-    echo "luna-bridge: launchctl unload failed for $PLIST" >&2
+    echo "muse-bridge: launchctl unload failed for $PLIST" >&2
     exit 1
   fi
-  echo "luna-bridge: closed (launchd agent $LABEL unloaded)."
+  echo "muse-bridge: closed (launchd agent $LABEL unloaded)."
   exit 0
 }
 
@@ -122,15 +122,15 @@ cmd_restart() {
   probe_launchd
   if [ "$LOADED" -eq 1 ]; then
     if ! launchctl unload "$PLIST"; then
-      echo "luna-bridge: launchctl unload failed for $PLIST" >&2
+      echo "muse-bridge: launchctl unload failed for $PLIST" >&2
       exit 1
     fi
   fi
   if ! launchctl load "$PLIST"; then
-    echo "luna-bridge: launchctl load failed for $PLIST" >&2
+    echo "muse-bridge: launchctl load failed for $PLIST" >&2
     exit 1
   fi
-  echo "luna-bridge: restarted (launchd agent $LABEL reloaded)."
+  echo "muse-bridge: restarted (launchd agent $LABEL reloaded)."
   if wait_health; then
     health_ok_line
     exit 0
@@ -142,9 +142,9 @@ cmd_restart() {
 cmd_status() {
   probe_launchd
   if [ "$LOADED" -eq 1 ]; then
-    echo "luna-bridge: loaded (launchd agent $LABEL${PID:+, pid $PID})"
+    echo "muse-bridge: loaded (launchd agent $LABEL${PID:+, pid $PID})"
   else
-    echo "luna-bridge: not loaded (launchd agent $LABEL is not running — open it with: luna-bridge start)"
+    echo "muse-bridge: not loaded (launchd agent $LABEL is not running — open it with: muse-bridge start)"
   fi
   if probe_health; then
     health_ok_line
@@ -158,8 +158,8 @@ cmd_status() {
 # script lives in (scripts/../server.js when run uninstalled), then the
 # path recorded in the installed plist (the ~/.local/bin copy). Sets SERVER.
 resolve_server() {
-  if [ -n "${LUNA_BRIDGE_SERVER:-}" ]; then
-    SERVER="$LUNA_BRIDGE_SERVER"
+  if [ -n "${MUSE_BRIDGE_SERVER:-}" ]; then
+    SERVER="$MUSE_BRIDGE_SERVER"
     [ -f "$SERVER" ] && return 0
     return 1
   fi
@@ -180,21 +180,21 @@ cmd_foreground() {
   # fight over the same port. The fix is one command away, so say it.
   probe_launchd
   if [ "$LOADED" -eq 1 ]; then
-    echo "luna-bridge: the bridge is already open in the background (launchd agent $LABEL${PID:+, pid $PID})." >&2
-    echo "  Stop it first, then re-run: luna-bridge stop" >&2
+    echo "muse-bridge: the bridge is already open in the background (launchd agent $LABEL${PID:+, pid $PID})." >&2
+    echo "  Stop it first, then re-run: muse-bridge stop" >&2
     exit 1
   fi
   if ! resolve_server; then
-    echo "luna-bridge: cannot find server.js (looked next to this script and in $PLIST)." >&2
-    echo "  Run it from the repo instead (node server.js --foreground), or set LUNA_BRIDGE_SERVER." >&2
+    echo "muse-bridge: cannot find server.js (looked next to this script and in $PLIST)." >&2
+    echo "  Run it from the repo instead (node server.js --foreground), or set MUSE_BRIDGE_SERVER." >&2
     exit 1
   fi
-  NODE_BIN="${LUNA_BRIDGE_NODE:-node}"
+  NODE_BIN="${MUSE_BRIDGE_NODE:-node}"
   if ! command -v "$NODE_BIN" >/dev/null 2>&1 && [ ! -x "$NODE_BIN" ]; then
-    echo "luna-bridge: node binary not found ($NODE_BIN) — set LUNA_BRIDGE_NODE to its full path." >&2
+    echo "muse-bridge: node binary not found ($NODE_BIN) — set MUSE_BRIDGE_NODE to its full path." >&2
     exit 1
   fi
-  echo "luna-bridge: running in the foreground — logs to this terminal (stdout), Ctrl+C to stop."
+  echo "muse-bridge: running in the foreground — logs to this terminal (stdout), Ctrl+C to stop."
   exec "$NODE_BIN" "$SERVER" --foreground
 }
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==========================================================================
-# TEST FIXTURE ONLY — not part of the shipped luna-bridge server.
+# TEST FIXTURE ONLY — not part of the shipped muse-bridge server.
 # This script pretends to be the `muse` CLI so the bridge can be tested
 # end-to-end on a machine without Muse Code installed.
 # Behaviour:

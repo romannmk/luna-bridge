@@ -1,4 +1,4 @@
-# Luna Bridge — полное руководство: установка, работа и публикация в open source
+# Muse Bridge — полное руководство: установка, работа и публикация в open source
 
 > Русская версия. Английская (каноническая) версия: [setup-guide.md](setup-guide.md).
 
@@ -7,7 +7,7 @@
 
 ## Что это и как устроено
 
-Luna Bridge — это один файл `server.js` на чистом Node.js (только стандартная библиотека, ноль зависимостей, без сборки). Он крутится на Mac как launchd-агент и делает ровно три вещи:
+Muse Bridge — это один файл `server.js` на чистом Node.js (только стандартная библиотека, ноль зависимостей, без сборки). Он крутится на Mac как launchd-агент и делает ровно три вещи:
 
 1. Принимает файлы и задачи по HTTP с Bearer-авторизацией.
 2. Запускает Muse Code CLI (`muse exec` — headless-задания, или интерактивный `muse` внутри tmux — shared-сессии) в указанной рабочей папке.
@@ -17,13 +17,13 @@ Luna Bridge — это один файл `server.js` на чистом Node.js (
 Телефон (приложение Muse)
         │  задача + скриншот
         ▼
-   AI-агент (Luna)
+   AI-агент (Muse)
         │  curl, HTTPS/HTTP + Bearer token
         ▼
   Приватная сеть ──────────────┐
   (Tailscale / LAN / туннель)  │
         ▼                      │
-  luna-bridge на Mac :8787 ────┘
+  muse-bridge на Mac :8787 ────┘
         │
         ├── muse exec "<задача>"        → headless-задание (job)
         └── tmux: интерактивный muse    → shared-сессия (session)
@@ -53,7 +53,7 @@ Remote Login (SSH) **не нужен** — мост изначально про�
 
 ### Сторона агента (кто присылает задачи)
 
-- Любой клиент, умеющий делать HTTP-запросы с заголовком `Authorization: Bearer <token>` (в исходном сценарии — AI-агент Luna через `curl`).
+- Любой клиент, умеющий делать HTTP-запросы с заголовком `Authorization: Bearer <token>` (в исходном сценарии — AI-агент Muse через `curl`).
 - Клиент должен знать: базовый URL моста (`http://<ip-mac>:8787`), токен и рабочую папку проекта.
 - Для сценария «с телефона» нужен только чат с агентом: пользователь пишет задачу и прикладывает скриншот, всё остальное делает агент.
 
@@ -75,8 +75,8 @@ tailscale up             # или другой транспорт — см. ни
 ### Шаг 2. Склонировать проект
 
 ```sh
-git clone <url-репозитория> luna-bridge
-cd luna-bridge
+git clone <url-репозитория> muse-bridge
+cd muse-bridge
 ```
 
 ### Шаг 3. Создать конфиг
@@ -98,7 +98,7 @@ cp config.example.json config.json
 node server.js
 ```
 
-Если токена ещё нет, сервер сгенерирует сильный токен (32 байта, hex), сохранит его в `~/.config/luna-bridge/token` с правами `0600` и покажет путь к файлу. **Само значение токена в stdout и в логи не печатается** (это был отдельный security-фикс: раньше значение попадало в лог launchd).
+Если токена ещё нет, сервер сгенерирует сильный токен (32 байта, hex), сохранит его в `~/.config/muse-bridge/token` с правами `0600` и покажет путь к файлу. **Само значение токена в stdout и в логи не печатается** (это был отдельный security-фикс: раньше значение попадало в лог launchd).
 
 Проверка, что сервер жив:
 
@@ -111,7 +111,7 @@ curl http://127.0.0.1:8787/health
 
 ### Шаг 5. Передать токен агенту
 
-Агент читает токен из файла `~/.config/luna-bridge/token` на Mac — когда у агента есть такой доступ — либо владелец передаёт значение один раз по защищённому каналу. Токен нельзя публиковать, коммитить и прикладывать к issue. Ротация токена: удалить файл и перезапустить мост — сгенерируется новый, старый перестанет работать.
+Агент читает токен из файла `~/.config/muse-bridge/token` на Mac — когда у агента есть такой доступ — либо владелец передаёт значение один раз по защищённому каналу. Токен нельзя публиковать, коммитить и прикладывать к issue. Ротация токена: удалить файл и перезапустить мост — сгенерируется новый, старый перестанет работать.
 
 ### Шаг 6. Поставить launchd-агент (автозапуск при логине)
 
@@ -119,12 +119,12 @@ curl http://127.0.0.1:8787/health
 sh scripts/install.sh
 ```
 
-Скрипт подставляет реальные пути и node в `launchd/com.luna.bridge.plist`, копирует его в `~/Library/LaunchAgents/com.luna.bridge.plist` и загружает. Логи: `logs/bridge.out.log` и `logs/bridge.err.log` в папке проекта.
+Скрипт подставляет реальные пути и node в `launchd/com.muse.bridge.plist`, копирует его в `~/Library/LaunchAgents/com.muse.bridge.plist` и загружает. Логи: `logs/bridge.out.log` и `logs/bridge.err.log` в папке проекта.
 
 Перезагрузка после обновления кода или конфига:
 
 ```sh
-launchctl unload ~/Library/LaunchAgents/com.luna.bridge.plist && launchctl load ~/Library/LaunchAgents/com.luna.bridge.plist
+launchctl unload ~/Library/LaunchAgents/com.muse.bridge.plist && launchctl load ~/Library/LaunchAgents/com.muse.bridge.plist
 ```
 
 Остановка: `sh scripts/uninstall.sh`.
@@ -160,11 +160,11 @@ curl http://<ip-mac>:8787/health
 
 ### Shared-сессия (интерактивная, с подключением владельца)
 
-1. Агент создаёт сессию: `POST /sessions` — мост запускает интерактивный `muse` внутри tmux-сессии `luna-<id>` с начальным промптом.
+1. Агент создаёт сессию: `POST /sessions` — мост запускает интерактивный `muse` внутри tmux-сессии `muse-<id>` с начальным промптом.
 2. Владелец на Mac подключается в тот же живой процесс:
 
 ```sh
-tmux attach -t luna-<id>
+tmux attach -t muse-<id>
 ```
 
 Отключиться без остановки сессии: `Ctrl+B`, затем `D`. Сессии переживают перезагрузку моста — tmux живёт отдельно.
@@ -236,8 +236,8 @@ tmux attach -t luna-<id>
 | `data_dir` | `<папка сервера>/data` | `inbox/` и `jobs/` |
 | `default_workdir` | `null` | Папка заданий без явного `workdir` |
 | `default_model`, `default_effort` | `null` | Дефолтные модель и усилие |
-| `token` | `null` | Токен; `null` — env `LUNA_BRIDGE_TOKEN`, иначе файл токена, иначе генерация |
-| `token_file` | `~/.config/luna-bridge/token` | Где хранится сгенерированный токен (0600) |
+| `token` | `null` | Токен; `null` — env `MUSE_BRIDGE_TOKEN`, иначе файл токена, иначе генерация |
+| `token_file` | `~/.config/muse-bridge/token` | Где хранится сгенерированный токен (0600) |
 | `muse_bin` | `muse` | Путь к бинарю Muse Code |
 | `muse_args` | `[]` | Доп. аргументы к каждому `muse exec` |
 | `mode` | `unrestricted` | Режим разрешений |
@@ -251,7 +251,7 @@ tmux attach -t luna-<id>
 | `max_output_tail_bytes` | 200 КБ | Хвост вывода в памяти и ответах |
 | `cancel_grace_ms` | `3000` | Пауза SIGTERM → SIGKILL при отмене |
 
-Окружение: `LUNA_BRIDGE_CONFIG` — путь к конфигу, `LUNA_BRIDGE_TOKEN` — токен.
+Окружение: `MUSE_BRIDGE_CONFIG` — путь к конфигу, `MUSE_BRIDGE_TOKEN` — токен.
 
 ## Как убрать Tailscale
 
@@ -311,7 +311,7 @@ tmux attach -t luna-<id>
 server.js                        сервер (Node stdlib only)
 config.example.json              пример конфига
 config.json                      ваш конфиг (gitignored)
-launchd/com.luna.bridge.plist    шаблон launchd-агента
+launchd/com.muse.bridge.plist    шаблон launchd-агента
 scripts/install.sh               установка и загрузка агента
 scripts/uninstall.sh             выгрузка агента
 test/fake-muse.sh                фикстура, притворяется muse CLI
@@ -329,7 +329,7 @@ README.md, SETUP.md              документация
 1. **Запушить 5 локальных коммитов с Mac** — сейчас origin отстаёт: фиксы install.sh (`2ff65402`), тестов на macOS (`11520f38`), запрет печати токена (`9ff5e29`), shared-сессии (`b10c288`), model/effort (`b32fddd`). Без них публичный репозиторий будет про старую версию.
 2. **Аудит секретов по всей истории:** в старом логе launchd однажды оказалось значение токена (токен уже ротирован и мёртв, но перед публикацией — `git log -p | grep` по токенам, путям и адресам; при находках — переписать историю или стартовать с чистого репозитория).
 3. **Вычистить персональное:** абсолютные пути с именем пользователя, личные имена проектов как `default_workdir`, личные хвосты в README — заменить нейтральными примерами (`/Users/you/Projects/my-app`, «ваш AI-агент»).
-4. **Разрешить путаницу с именами:** старое имя репозитория, проект и конфиги (`luna-bridge`) и launchd-лейбл (`com.luna.bridge`) должны сходиться к одному публичному имени — `luna-bridge`.
+4. **Разрешить путаницу с именами:** старое имя репозитория, проект и конфиги (`muse-bridge`) и launchd-лейбл (`com.muse.bridge`) должны сходиться к одному публичному имени — `muse-bridge`.
 5. **Отвязать транспорт от Tailscale** — по рецепту из раздела выше (`bind_mode`, localhost-дефолт, транспортные рецепты в документации).
 6. **Лицензия:** выбрать и добавить `LICENSE` (MIT — самый низкий порог для такого инструмента; Apache-2.0 — если важна патентная оговорка).
 7. **Обязательные файлы:** `LICENSE`, `SECURITY.md` (модель угроз: токен = полный доступ к `muse --yolo` на машине), `CONTRIBUTING.md`, `.gitignore` (уже есть: конфиг, токен, `data/`, `logs/`).

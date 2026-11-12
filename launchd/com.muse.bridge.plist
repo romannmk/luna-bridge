@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  luna-bridge launchd agent (macOS).
-  Installed to ~/Library/LaunchAgents/com.luna.bridge.plist by scripts/install.sh.
+  muse-bridge launchd agent (macOS).
+  Installed to ~/Library/LaunchAgents/com.muse.bridge.plist by scripts/install.sh.
   Replace __BRIDGE_DIR__ with the directory containing server.js,
   and __NODE__ with the node binary if `node` is not on the default PATH
   (e.g. /opt/homebrew/bin/node). KeepAlive restarts the server if it exits.
@@ -10,7 +10,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.luna.bridge</string>
+  <string>com.muse.bridge</string>
   <key>ProgramArguments</key>
   <array>
     <string>__NODE__</string>

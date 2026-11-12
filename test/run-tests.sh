@@ -1,14 +1,17 @@
 #!/bin/sh
-# luna-bridge end-to-end test (runs the server locally with a FAKE muse CLI).
+# muse-bridge end-to-end test (runs the server locally with a FAKE muse CLI).
 # Usage: sh test/run-tests.sh
 # Requires: node, curl. Exits non-zero if any check fails.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP="$(mktemp -d /tmp/luna-bridge-test.XXXXXX)"
+TMP="$(mktemp -d /tmp/muse-bridge-test.XXXXXX)"
+# The fake muse fixture must be executable: the server spawns it directly.
+# A checkout (or an API push) can lose the exec bit, so enforce it here.
+chmod +x "$ROOT/test/fake-muse.sh" 2>/dev/null || true
 PORT=8799
 TOKEN="test-token-do-not-use-in-production"
-export LUNA_BRIDGE_TOKEN="$TOKEN"
+export MUSE_BRIDGE_TOKEN="$TOKEN"
 
 mkdir -p "$TMP/work" "$TMP/data"
 cat > "$TMP/config.json" <<EOF
@@ -22,7 +25,7 @@ cat > "$TMP/config.json" <<EOF
   "max_model_steps": 0
 }
 EOF
-export LUNA_BRIDGE_CONFIG="$TMP/config.json"
+export MUSE_BRIDGE_CONFIG="$TMP/config.json"
 
 PASS=0
 FAIL=0
@@ -234,8 +237,8 @@ if command -v tmux >/dev/null 2>&1; then
   SESS_ID="$(echo "$SESS_BODY" | sed -n 's/.*"session_id": *"\([^"]*\)".*/\1/p')"
   SESS_TMUX="$(echo "$SESS_BODY" | sed -n 's/.*"tmux_session": *"\([^"]*\)".*/\1/p')"
   [ -n "$SESS_ID" ] && check "session created (got id)" "yes" "yes" || check "session created (got id)" "yes" "no"
-  check "tmux session named luna-<id>" "luna-$SESS_ID" "$SESS_TMUX"
-  contains "attach_command format" "tmux attach -t luna-$SESS_ID" "$SESS_BODY"
+  check "tmux session named muse-<id>" "muse-$SESS_ID" "$SESS_TMUX"
+  contains "attach_command format" "tmux attach -t muse-$SESS_ID" "$SESS_BODY"
   contains "session starts alive" '"status":"alive"' "$SESS_BODY"
   CREATED_TMUX="$CREATED_TMUX $SESS_TMUX"
   [ -f "$TMP/data/sessions/$SESS_ID/meta.json" ] && check "session meta.json persisted" "yes" "yes" || check "session meta.json persisted" "yes" "no"
@@ -258,7 +261,7 @@ if command -v tmux >/dev/null 2>&1; then
   contains "session list contains session" "$SESS_ID" "$SLIST"
   contains "session list shows alive" '"status":"alive"' "$SLIST"
   SGET="$(curl -s -H "$AUTH" "$BASE/sessions/$SESS_ID")"
-  contains "session get has attach command" "tmux attach -t luna-$SESS_ID" "$SGET"
+  contains "session get has attach command" "tmux attach -t muse-$SESS_ID" "$SGET"
 
   # input: owner-asked typing; the fake TUI echoes it back into the pane
   INP="$(curl -s -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"text":"hello owner"}' "$BASE/sessions/$SESS_ID/input")"
@@ -293,7 +296,7 @@ if command -v tmux >/dev/null 2>&1; then
   # It carries model/effort so the pane proves the flags reach the TUI too.
   SESSB="$(curl -s -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\": \"interactive hello beta\", \"workdir\": \"$TMP/work\", \"model\": \"muse-wonder-full-1.0\", \"effort\": \"xhigh\"}" "$BASE/sessions")"
   SESSB_ID="$(echo "$SESSB" | sed -n 's/.*"session_id": *"\([^"]*\)".*/\1/p')"
-  SESSB_TMUX="luna-$SESSB_ID"
+  SESSB_TMUX="muse-$SESSB_ID"
   contains "session create echoes model" '"model":"muse-wonder-full-1.0"' "$SESSB"
   contains "session create echoes effort" '"effort":"xhigh"' "$SESSB"
   CREATED_TMUX="$CREATED_TMUX $SESSB_TMUX"
@@ -535,7 +538,7 @@ wait_health() { # $1=url
   return 0
 }
 expect_startup_fail() { # $1=name $2=config $3=path-prefix $4=log-needle
-  LUNA_BRIDGE_CONFIG="$2" PATH="$3:$PATH" node "$ROOT/server.js" > "$TMP/bind-fail.log" 2>&1 &
+  MUSE_BRIDGE_CONFIG="$2" PATH="$3:$PATH" node "$ROOT/server.js" > "$TMP/bind-fail.log" 2>&1 &
   BPID=$!
   i=0
   while kill -0 $BPID 2>/dev/null && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.2; done
@@ -552,7 +555,7 @@ expect_startup_fail() { # $1=name $2=config $3=path-prefix $4=log-needle
 # localhost mode: serves on 127.0.0.1, log names mode + address + reach line
 write_bind_config "$TMP/bind-localhost.json" 8801 ',
   "bind_mode": "localhost"'
-LUNA_BRIDGE_CONFIG="$TMP/bind-localhost.json" PATH="$TMP/no-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-localhost.log" 2>&1 &
+MUSE_BRIDGE_CONFIG="$TMP/bind-localhost.json" PATH="$TMP/no-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-localhost.log" 2>&1 &
 BPID=$!
 if wait_health "http://127.0.0.1:8801"; then
   check "bind localhost: health on 127.0.0.1" "ok" "ok"
@@ -572,7 +575,7 @@ kill $BPID 2>/dev/null; sleep 0.3
 # auto without any Tailscale IP: 127.0.0.1 only, no crash
 write_bind_config "$TMP/bind-auto-nots.json" 8802 ',
   "bind_mode": "auto"'
-LUNA_BRIDGE_CONFIG="$TMP/bind-auto-nots.json" PATH="$TMP/no-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-auto-nots.log" 2>&1 &
+MUSE_BRIDGE_CONFIG="$TMP/bind-auto-nots.json" PATH="$TMP/no-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-auto-nots.log" 2>&1 &
 BPID=$!
 if wait_health "http://127.0.0.1:8802"; then
   check "bind auto/no-Tailscale: health on 127.0.0.1" "ok" "ok"
@@ -586,7 +589,7 @@ if [ -n "$FAKE_TS_IP" ]; then
   # auto with a detected Tailscale IP (fake CLI -> $FAKE_TS_IP): binds it too
   write_bind_config "$TMP/bind-auto-ts.json" 8803 ',
     "bind_mode": "auto"'
-  LUNA_BRIDGE_CONFIG="$TMP/bind-auto-ts.json" PATH="$TMP/fake-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-auto-ts.log" 2>&1 &
+  MUSE_BRIDGE_CONFIG="$TMP/bind-auto-ts.json" PATH="$TMP/fake-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-auto-ts.log" 2>&1 &
   BPID=$!
   if wait_health "http://$FAKE_TS_IP:8803"; then
     check "bind auto/Tailscale: health on the Tailscale IP" "ok" "ok"
@@ -603,7 +606,7 @@ if [ -n "$FAKE_TS_IP" ]; then
   # tailscale mode with a detected IP: binds that IP only, not 127.0.0.1
   write_bind_config "$TMP/bind-ts.json" 8804 ',
     "bind_mode": "tailscale"'
-  LUNA_BRIDGE_CONFIG="$TMP/bind-ts.json" PATH="$TMP/fake-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-ts.log" 2>&1 &
+  MUSE_BRIDGE_CONFIG="$TMP/bind-ts.json" PATH="$TMP/fake-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-ts.log" 2>&1 &
   BPID=$!
   if wait_health "http://$FAKE_TS_IP:8804"; then
     check "bind tailscale: health on the Tailscale IP" "ok" "ok"
@@ -640,7 +643,7 @@ expect_startup_fail "bind custom/bad-host" "$TMP/bind-custom-bad.json" "$TMP/no-
 write_bind_config "$TMP/bind-custom.json" 8805 ',
   "bind_mode": "custom",
   "bind_host": "127.0.0.1"'
-LUNA_BRIDGE_CONFIG="$TMP/bind-custom.json" PATH="$TMP/no-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-custom.log" 2>&1 &
+MUSE_BRIDGE_CONFIG="$TMP/bind-custom.json" PATH="$TMP/no-ts-bin:$PATH" node "$ROOT/server.js" > "$TMP/bind-custom.log" 2>&1 &
 BPID=$!
 if wait_health "http://127.0.0.1:8805"; then
   check "bind custom: health on bind_host" "ok" "ok"
@@ -764,7 +767,7 @@ CFEOF
   "keep_awake": true'
   # write_bind_config points data_dir at $TMP/data-bind; fine for these runs.
   rm -f "$FAKE_CAFFEINATE_MARKER" "$FAKE_CAFFEINATE_PIDFILE"
-  LUNA_BRIDGE_CONFIG="$TMP/ka-on.json" PATH="$TMP/fake-caffeinate-bin:$PATH" node "$ROOT/server.js" > "$TMP/ka-on.log" 2>&1 &
+  MUSE_BRIDGE_CONFIG="$TMP/ka-on.json" PATH="$TMP/fake-caffeinate-bin:$PATH" node "$ROOT/server.js" > "$TMP/ka-on.log" 2>&1 &
   KAPID=$!
   if wait_health "http://127.0.0.1:8811"; then
     check "keep-awake on: health on 127.0.0.1" "ok" "ok"
@@ -798,7 +801,7 @@ CFEOF
   write_bind_config "$TMP/ka-off.json" 8812 ',
   "bind_mode": "localhost"'
   rm -f "$FAKE_CAFFEINATE_MARKER" "$FAKE_CAFFEINATE_PIDFILE"
-  LUNA_BRIDGE_CONFIG="$TMP/ka-off.json" PATH="$TMP/fake-caffeinate-bin:$PATH" node "$ROOT/server.js" > "$TMP/ka-off.log" 2>&1 &
+  MUSE_BRIDGE_CONFIG="$TMP/ka-off.json" PATH="$TMP/fake-caffeinate-bin:$PATH" node "$ROOT/server.js" > "$TMP/ka-off.log" 2>&1 &
   KAPID=$!
   if wait_health "http://127.0.0.1:8812"; then
     check "keep-awake off (default): health on 127.0.0.1" "ok" "ok"
@@ -813,20 +816,20 @@ else
   echo "SKIP: not macOS - keep-awake e2e skipped (unit tests above cover the gating)"
 fi
 
-# --- 15. luna-bridge CLI (fake launchctl + fake curl on PATH) -----------------
+# --- 15. muse-bridge CLI (fake launchctl + fake curl on PATH) -----------------
 # The real launchd agent is never touched here: a fake `launchctl` keeps its
 # loaded-state in a temp file and logs every call, a fake `curl` answers (or
 # refuses) the health check, and HOME points at a temp dir with a dummy plist.
-CLI="$ROOT/scripts/luna-bridge"
+CLI="$ROOT/scripts/muse-bridge"
 mkdir -p "$TMP/fake-cli-bin" "$TMP/cli-home/Library/LaunchAgents"
-printf 'dummy plist (tests only)\n' > "$TMP/cli-home/Library/LaunchAgents/com.luna.bridge.plist"
+printf 'dummy plist (tests only)\n' > "$TMP/cli-home/Library/LaunchAgents/com.muse.bridge.plist"
 cat > "$TMP/fake-cli-bin/launchctl" <<'LCEOF'
 #!/bin/sh
 echo "$@" >> "$FAKE_LAUNCHCTL_LOG"
 case "$1" in
   list)
     if [ -f "$FAKE_LAUNCHCTL_STATE" ]; then
-      printf '{\n\t"Label" = "com.luna.bridge";\n\t"PID" = 4242;\n};\n'
+      printf '{\n\t"Label" = "com.muse.bridge";\n\t"PID" = 4242;\n};\n'
       exit 0
     fi
     exit 1 ;;
@@ -851,7 +854,7 @@ run_cli() { # run_cli <args...> -> sets CLI_OUT, CLI_CODE; FAKE_CURL_OK may be p
   CLI_CODE=$?
 }
 
-[ -x "$CLI" ] && check "cli: scripts/luna-bridge is executable" "yes" "yes" || check "cli: scripts/luna-bridge is executable" "yes" "no"
+[ -x "$CLI" ] && check "cli: scripts/muse-bridge is executable" "yes" "yes" || check "cli: scripts/muse-bridge is executable" "yes" "no"
 
 rm -f "$FAKE_LAUNCHCTL_STATE" "$FAKE_LAUNCHCTL_LOG"
 FAKE_CURL_OK=0 run_cli status
@@ -860,7 +863,7 @@ contains "cli status (stopped): says not loaded" 'not loaded' "$CLI_OUT"
 
 FAKE_CURL_OK=1 run_cli start
 check "cli start: exit 0" "0" "$CLI_CODE"
-contains "cli start: launchctl load of the agent plist" "load $TMP/cli-home/Library/LaunchAgents/com.luna.bridge.plist" "$(cat "$FAKE_LAUNCHCTL_LOG")"
+contains "cli start: launchctl load of the agent plist" "load $TMP/cli-home/Library/LaunchAgents/com.muse.bridge.plist" "$(cat "$FAKE_LAUNCHCTL_LOG")"
 contains "cli start: reports healthy" 'health OK' "$CLI_OUT"
 [ -f "$FAKE_LAUNCHCTL_STATE" ] && check "cli start: agent loaded (fake state)" "loaded" "loaded" || check "cli start: agent loaded (fake state)" "loaded" "not loaded"
 
@@ -929,7 +932,7 @@ touch "$FAKE_LAUNCHCTL_STATE"
 rm -f "$FAKE_NODE_LOG"
 run_cli foreground
 check "cli foreground (agent loaded): exit 1" "1" "$CLI_CODE"
-contains "cli foreground (agent loaded): says stop the background bridge first" 'luna-bridge stop' "$CLI_OUT"
+contains "cli foreground (agent loaded): says stop the background bridge first" 'muse-bridge stop' "$CLI_OUT"
 [ -f "$FAKE_NODE_LOG" ] && check "cli foreground (agent loaded): node never started" "absent" "started" || check "cli foreground (agent loaded): node never started" "absent" "absent"
 rm -f "$FAKE_LAUNCHCTL_STATE"
 
@@ -938,11 +941,11 @@ check "cli foreground with extra arg: exit 2" "2" "$CLI_CODE"
 contains "cli foreground with extra arg: prints usage" 'usage:' "$CLI_OUT"
 unset FAKE_NODE_LOG
 
-mv "$TMP/cli-home/Library/LaunchAgents/com.luna.bridge.plist" "$TMP/plist.bak"
+mv "$TMP/cli-home/Library/LaunchAgents/com.muse.bridge.plist" "$TMP/plist.bak"
 run_cli start
 check "cli start (no plist installed): exit 1" "1" "$CLI_CODE"
 contains "cli start (no plist installed): points at install.sh" 'install.sh' "$CLI_OUT"
-mv "$TMP/plist.bak" "$TMP/cli-home/Library/LaunchAgents/com.luna.bridge.plist"
+mv "$TMP/plist.bak" "$TMP/cli-home/Library/LaunchAgents/com.muse.bridge.plist"
 unset FAKE_LAUNCHCTL_STATE FAKE_LAUNCHCTL_LOG
 
 # --- 16. --foreground (server flag: attached to the terminal, logs to stdout) -
@@ -983,7 +986,7 @@ contains "server --bogus: prints usage" 'Usage:' "$(cat "$TMP/fg-bogus.log")"
 # and Ctrl+C (SIGINT) stops it.
 write_bind_config "$TMP/fg.json" 8813 ',
   "bind_mode": "localhost"'
-LUNA_BRIDGE_CONFIG="$TMP/fg.json" node "$ROOT/server.js" --foreground > "$TMP/fg.out.log" 2> "$TMP/fg.err.log" &
+MUSE_BRIDGE_CONFIG="$TMP/fg.json" node "$ROOT/server.js" --foreground > "$TMP/fg.out.log" 2> "$TMP/fg.err.log" &
 FGPID=$!
 if wait_health "http://127.0.0.1:8813"; then
   check "foreground: health on 127.0.0.1" "ok" "ok"
@@ -1104,7 +1107,7 @@ cat > "$TMP/allow.json" <<EOF
   "max_model_steps": 0
 }
 EOF
-LUNA_BRIDGE_CONFIG="$TMP/allow.json" HOME="$TMP/fakehome" node "$ROOT/server.js" > "$TMP/allow.log" 2>&1 &
+MUSE_BRIDGE_CONFIG="$TMP/allow.json" HOME="$TMP/fakehome" node "$ROOT/server.js" > "$TMP/allow.log" 2>&1 &
 APID=$!
 ABASE="http://127.0.0.1:8814"
 if wait_health "$ABASE"; then
@@ -1142,7 +1145,7 @@ if command -v tmux >/dev/null 2>&1; then
   ASESS="$(curl -s -w '\n%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\":\"interactive hello allow\",\"workdir\":\"$TMP/allowed/sub\"}" "$ABASE/sessions")"
   check "allowlist session inside -> 201" "201" "$(echo "$ASESS" | tail -1)"
   ASESS_ID="$(echo "$ASESS" | sed -n 's/.*"session_id": *"\([^"]*\)".*/\1/p')"
-  CREATED_TMUX="$CREATED_TMUX luna-$ASESS_ID"
+  CREATED_TMUX="$CREATED_TMUX muse-$ASESS_ID"
   [ -n "$ASESS_ID" ] && curl -s -X POST -H "$AUTH" "$ABASE/sessions/$ASESS_ID/kill" >/dev/null
 fi
 kill $APID 2>/dev/null; sleep 0.3
@@ -1160,7 +1163,7 @@ cat > "$TMP/allow-bad-default.json" <<EOF
   "max_model_steps": 0
 }
 EOF
-LUNA_BRIDGE_CONFIG="$TMP/allow-bad-default.json" node "$ROOT/server.js" > "$TMP/allow-bad-default.log" 2>&1 &
+MUSE_BRIDGE_CONFIG="$TMP/allow-bad-default.json" node "$ROOT/server.js" > "$TMP/allow-bad-default.log" 2>&1 &
 APID=$!
 if wait_health "http://127.0.0.1:8815"; then
   check "allowlist bad-default server: health" "ok" "ok"
