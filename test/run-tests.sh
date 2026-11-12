@@ -6,6 +6,9 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d /tmp/muse-bridge-test.XXXXXX)"
+# The fake muse fixture must be executable: the server spawns it directly.
+# A checkout (or an API push) can lose the exec bit, so enforce it here.
+chmod +x "$ROOT/test/fake-muse.sh" 2>/dev/null || true
 PORT=8799
 TOKEN="test-token-do-not-use-in-production"
 export MUSE_BRIDGE_TOKEN="$TOKEN"
