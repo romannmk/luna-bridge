@@ -442,6 +442,79 @@ contains "null default effort falls back to medium" '--reasoning-effort medium' 
 contains "null default model reported" '"model":"muse-ember-1.0"' "$NSTATUS"
 contains "null default effort reported" '"effort":"medium"' "$NSTATUS"
 
+# --- 9e. step cap: config null falls back to 300, per-job override --------
+# Same null-defaults config as 9d, but with max_model_steps null: the cap
+# must fall back to the shipped default (300) instead of leaving the run
+# uncapped. A per-job max_model_steps overrides it; 0 removes the flag.
+cat > "$TMP/config.json" <<EOF
+{
+  "port": $PORT,
+  "bind_host": "127.0.0.1",
+  "data_dir": "$TMP/data",
+  "default_workdir": "$TMP/work",
+  "muse_bin": "$ROOT/test/fake-muse.sh",
+  "mode": "unrestricted",
+  "max_model_steps": null,
+  "default_model": null,
+  "default_effort": null
+}
+EOF
+kill $SERVER_PID 2>/dev/null
+sleep 0.5
+node "$ROOT/server.js" > "$TMP/server5.log" 2>&1 &
+SERVER_PID=$!
+i=0
+until curl -s "$BASE/health" >/dev/null 2>&1; do
+  i=$((i + 1)); [ "$i" -gt 50 ] && { echo "FAIL: server did not restart with null step cap"; cat "$TMP/server5.log"; exit 1; }
+  sleep 0.2
+done
+SJOB="$(curl -s -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\": \"tiny hello\", \"workdir\": \"$TMP/work\"}" "$BASE/jobs")"
+SJOB_ID="$(echo "$SJOB" | sed -n 's/.*"job_id": *"\([^"]*\)".*/\1/p')"
+i=0
+while [ "$i" -lt 50 ]; do
+  SSTATUS="$(curl -s -H "$AUTH" "$BASE/jobs/$SJOB_ID")"
+  case "$SSTATUS" in
+    *'"status":"done"'*|*'"status":"failed"'*) break ;;
+  esac
+  i=$((i + 1)); sleep 0.2
+done
+contains "null step cap falls back to 300" '--max-model-steps 300' "$SSTATUS"
+contains "null step cap reported" '"max_model_steps":300' "$SSTATUS"
+# per-job override: 40 steps
+OJOB2="$(curl -s -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\": \"tiny hello\", \"workdir\": \"$TMP/work\", \"max_model_steps\": 40}" "$BASE/jobs")"
+OJOB2_ID="$(echo "$OJOB2" | sed -n 's/.*"job_id": *"\([^"]*\)".*/\1/p')"
+i=0
+while [ "$i" -lt 50 ]; do
+  OSTATUS2="$(curl -s -H "$AUTH" "$BASE/jobs/$OJOB2_ID")"
+  case "$OSTATUS2" in
+    *'"status":"done"'*|*'"status":"failed"'*) break ;;
+  esac
+  i=$((i + 1)); sleep 0.2
+done
+contains "per-job step cap reaches muse" '--max-model-steps 40' "$OSTATUS2"
+contains "per-job step cap reported" '"max_model_steps":40' "$OSTATUS2"
+# per-job 0 = no cap flag at all
+ZJOB="$(curl -s -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\": \"tiny hello\", \"workdir\": \"$TMP/work\", \"max_model_steps\": 0}" "$BASE/jobs")"
+ZJOB_ID="$(echo "$ZJOB" | sed -n 's/.*"job_id": *"\([^"]*\)".*/\1/p')"
+i=0
+while [ "$i" -lt 50 ]; do
+  ZSTATUS="$(curl -s -H "$AUTH" "$BASE/jobs/$ZJOB_ID")"
+  case "$ZSTATUS" in
+    *'"status":"done"'*|*'"status":"failed"'*) break ;;
+  esac
+  i=$((i + 1)); sleep 0.2
+done
+case "$ZSTATUS" in
+  *"--max-model-steps"*) check "per-job 0 omits step flag" "absent" "present" ;;
+  *) check "per-job 0 omits step flag" "absent" "absent" ;;
+esac
+contains "per-job 0 reported" '"max_model_steps":0' "$ZSTATUS"
+# invalid per-job values -> 400
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"prompt": "x", "max_model_steps": -1}' "$BASE/jobs")"
+check "negative max_model_steps -> 400" "400" "$CODE"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$AUTH" -H 'Content-Type: application/json' -d '{"prompt": "x", "max_model_steps": "many"}' "$BASE/jobs")"
+check "string max_model_steps -> 400" "400" "$CODE"
+
 # --- 10. job list -------------------------------------------------------------
 LIST="$(curl -s -H "$AUTH" "$BASE/jobs")"
 contains "list contains jobs" '"jobs"' "$LIST"

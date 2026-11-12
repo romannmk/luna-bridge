@@ -314,7 +314,13 @@ is on disk at `data/jobs/<id>/log.txt`.
 | `read-only` | `--disable-write --disable-shell` | Read only |
 
 Every run also gets `--trust-workspace`, plus `--max-model-steps <cap>`
-when a cap is set.
+when a cap is set (default `300`; a per-job `max_model_steps` on
+`POST /jobs` overrides it, `0` = no cap). The full headless template is
+`muse exec <mode flags> --trust-workspace --model <ID>
+--reasoning-effort <TIER> --max-model-steps <N> --workspace <workdir>
+--prompt-file <job>/prompt.txt`. When the cap is hit, `muse exec` exits
+`1` and the job is marked `failed` — that is the cap working, not a
+crash: narrow the task or raise the cap and rerun.
 
 **Two layers must agree.** The bridge mode only chooses the flags above.
 The second layer is Muse Code's own default profile,

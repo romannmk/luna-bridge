@@ -107,8 +107,9 @@ Edit `config.json` (it is gitignored — it never leaves your machine):
 - `default_model` / `default_effort`: both default to cheap —
   `muse-ember-1.0` / `medium` — so routine work doesn't burn the weekly
   allowance. Leave them to keep it that way; set a frontier model (e.g.
-  `muse-wonder-full-1.0`) only if you want every run on the expensive
-  model. A `null` value falls back to the shipped default (it does not
+  `muse-wonder-1.0`) only if you want every run on the expensive
+  model. (Meta publishes no model id for Wonder Full — select it via
+  `/models`.) A `null` value falls back to the shipped default (it does not
   skip the flags). Luna can also set them per run (`model`, `effort`
   fields on `POST /jobs` and `POST /sessions`); per-request values win.
   See README for the effort enum and example model ids.
@@ -324,7 +325,7 @@ This is the full breakdown behind the summary in README.md ("Testing").
 On a machine without Muse Code, the suite uses a fake `muse` executable:
 
 ```sh
-sh test/run-tests.sh   # 258 checks: health, auth, upload, jobs, model/effort, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, luna-bridge CLI, --foreground, allowed_workdirs
+sh test/run-tests.sh   # 266 checks: health, auth, upload, jobs, model/effort, step caps, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, luna-bridge CLI, --foreground, allowed_workdirs
 ```
 
 What is tested: health (no auth), 401 on missing/wrong token, upload (201,

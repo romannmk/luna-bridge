@@ -286,16 +286,26 @@ or frozen output tail deserves suspicion, and cancelling it is the
 remedy. The full log stays on disk at `data/jobs/<id>/log.txt` either
 way.
 
-**Model and effort, per run.** Both `POST /jobs` and `POST /sessions`
-accept optional `model` and `effort`:
+**Model, effort and step cap, per run.** Both `POST /jobs` and `POST /sessions`
+accept optional `model` and `effort`; `POST /jobs` also accepts optional
+`max_model_steps`:
 
 - `model`: free-form model id (e.g. `muse-ember-1.0`, `muse-spark-1.3`,
-  `muse-wonder-full-1.0`); must be a non-empty string, else 400. Passed
-  as `--model <ID>`.
+  `muse-wonder-1.0`); must be a non-empty string, else 400. Passed
+  as `--model <ID>`. Meta publishes no model id for Wonder Full —
+  select it via `/models` in an interactive session instead of passing
+  an unverified id to `--model`.
 - `effort`: one of `none|minimal|low|medium|high|xhigh|max|ultra`, else
   400. Passed as `--reasoning-effort <TIER>` (both `muse --help` and
   `muse exec --help` accept `--model` and `--reasoning-effort`, alias
   `--effort`).
+- `max_model_steps` (jobs only): cap on model steps for this run. A
+  non-negative integer; `0` = no cap, anything else → 400. Omitted or
+  `null` falls back to `max_model_steps` from config (default `300`); a
+  `null`/invalid config value falls back to the shipped default instead
+  of leaving the run uncapped. Passed as `--max-model-steps <N>`. Small
+  tasks need far less than the default — `20`–`40` steps is plenty for a
+  mechanical fix; keep the default for long jobs.
 - Omitted or `null` falls back to `default_model` / `default_effort`
   (defaults: `muse-ember-1.0` / `medium` — cheap by default, so routine
   work doesn't burn the weekly allowance; the frontier model stays one
@@ -303,6 +313,22 @@ accept optional `model` and `effort`:
   shipped default instead of leaving the flags unset. Per-request values
   win. The effective values are recorded in the job/session `meta.json`
   and returned by the GET endpoints.
+
+Every headless job runs this launch template (mode flags first, then the
+rest in order):
+
+```sh
+muse exec <mode flags> --trust-workspace --model <ID> \
+  --reasoning-effort <TIER> --max-model-steps <N> \
+  --workspace <workdir> [<muse_args>...] --prompt-file <job>/prompt.txt
+```
+
+(`--workspace` only when `use_workspace_flag` is true; live sessions run
+interactive `muse` instead, with the same `--model` / `--reasoning-effort`
+but no `--max-model-steps` — that flag is `muse exec`-only.) When the
+step cap is hit, `muse exec` exits `1` and the job is marked `failed` —
+that is the cap working, not a crash: narrow the task or raise the cap
+and rerun.
 
 Other verified `muse exec` flags: `--json`, `--prompt-file <path>`,
 `--session-id <uuid>`, `--no-session-log`. Exit codes: `0` done, `1`
@@ -451,11 +477,11 @@ example.
 | `tmux_bin` | `"tmux"` | tmux binary for shared sessions (resolved via `which` at startup, logged). Headless jobs never touch tmux |
 | `muse_args` | `[]` | Extra args appended to every `muse exec` call (after the mode flags), e.g. `["--model", "muse-ember-1.0"]` |
 | `mode` | `"auto-review"` | Permission mode for new jobs (see [Permission modes](#permission-modes)) |
-| `default_model` | `"muse-ember-1.0"` | Default model id. `null`/absent = shipped default (Ember — cheap by default). Set e.g. `"muse-wonder-full-1.0"` for the frontier default. Per-request `model` overrides it |
+| `default_model` | `"muse-ember-1.0"` | Default model id. `null`/absent = shipped default (Ember — cheap by default). Set e.g. `"muse-wonder-1.0"` for the frontier default (Meta publishes no model id for Wonder Full — select it via `/models`). Per-request `model` overrides it |
 | `default_effort` | `"medium"` | Default effort tier (`none\|minimal\|low\|medium\|high\|xhigh\|max\|ultra`). `null`/absent = shipped default (`medium`; Muse Code's own default is `high`). Per-request `effort` overrides it |
 | `sync_muse_settings` | `false` | If `true`, `POST /mode` also writes `permissions.default_profile` into `~/.config/muse/settings.json` (opt-in). Writes the colon-prefixed profile id (e.g. `:auto-review`), as Muse Code itself does — see [Permission modes](#permission-modes) |
 | `keep_awake` | `false` | macOS only: hold an idle-sleep assertion (`caffeinate -i -w <pid>`) while the bridge runs. No idle sleep while up — mind battery/heat |
-| `max_model_steps` | `300` | Cap on model steps per job (`0` = no cap). Prevents runaway quota burn |
+| `max_model_steps` | `300` | Cap on model steps per job (`0` = no cap). Prevents runaway quota burn. `null`/invalid = shipped default (`300`). Per-job `max_model_steps` overrides it |
 | `prompt_via_file` | `true` | Pass the prompt via `--prompt-file` (also saved as `prompt.txt` in the job dir for audit). `false` = positional argument |
 | `use_workspace_flag` | `true` | Pass `--workspace <workdir>` to `muse exec` (reported in community docs; set `false` if your version rejects it) |
 | `max_upload_bytes` | `26214400` (25 MB) | Upload size limit |

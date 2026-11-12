@@ -150,7 +150,9 @@ const DEFAULTS = {
   // longer burn the whole weekly allowance. A null/absent value falls back
   // to this shipped default; it does NOT mean "let Muse Code decide".
   // Set an explicit model id for the frontier default, e.g.
-  // "muse-wonder-full-1.0". Per-request `model` overrides it.
+  // "muse-wonder-1.0". Per-request `model` overrides it. Meta publishes
+  // no model id for Wonder Full — select it via /models in an
+  // interactive session instead of passing an unverified id to --model.
   default_model: 'muse-ember-1.0',
   // Default reasoning effort tier for runs. `medium` keeps routine work
   // cheap; Muse Code's own default is `high`. A null/absent value falls
@@ -169,6 +171,8 @@ const DEFAULTS = {
   // On other platforms (or without caffeinate) it logs and continues.
   keep_awake: false,
   // Cap on model steps per job (0 = no cap). Prevents runaway quota burn.
+  // A null/invalid value falls back to this shipped default (300);
+  // a per-job max_model_steps overrides it.
   max_model_steps: 300,
   // Pass the prompt via --prompt-file (writes prompt.txt in the job dir)
   // instead of as a positional argument. Disable if your muse version
@@ -699,6 +703,21 @@ function resolveModelEffort(body, defaults) {
   return { model: model ?? null, effort: effort ?? null };
 }
 
+// Validate one run's max_model_steps request field. Returns the effective
+// step cap (an integer >= 0; 0 = no cap) or { error } on invalid input.
+// `body` is the request JSON; `defaultSteps` is the config default.
+// Explicit null in the request means "unset" (falls back to the default);
+// any other present value must be a non-negative integer.
+function resolveMaxModelSteps(body, defaultSteps) {
+  if (body.max_model_steps === undefined || body.max_model_steps === null) {
+    return defaultSteps;
+  }
+  if (!Number.isInteger(body.max_model_steps) || body.max_model_steps < 0) {
+    return { error: 'max_model_steps must be a non-negative integer' };
+  }
+  return body.max_model_steps;
+}
+
 function configModelEffort() {
   // A null/absent/invalid config value falls back to the shipped default
   // (DEFAULTS), not to "unset": an old config.json with explicit nulls
@@ -713,6 +732,18 @@ function configModelEffort() {
     ? config.default_effort
     : (EFFORTS.includes(DEFAULTS.default_effort) ? DEFAULTS.default_effort : null);
   return { model, effort };
+}
+
+function configMaxModelSteps() {
+  // A null/absent/invalid config value falls back to the shipped default
+  // (DEFAULTS.max_model_steps), not to "unset": an old config.json with an
+  // explicit null must not silently leave headless runs uncapped.
+  if (Number.isInteger(config.max_model_steps) && config.max_model_steps >= 0) {
+    return config.max_model_steps;
+  }
+  return (Number.isInteger(DEFAULTS.max_model_steps) && DEFAULTS.max_model_steps >= 0)
+    ? DEFAULTS.max_model_steps
+    : 0;
 }
 
 // Append --model / --reasoning-effort flags for a run (headless or
@@ -744,8 +775,13 @@ function buildMuseArgs(job) {
   args.push(...modeFlags(job.mode));
   args.push('--trust-workspace');
   appendModelEffortFlags(args, job.model, job.effort);
-  if (config.max_model_steps > 0) {
-    args.push('--max-model-steps', String(config.max_model_steps));
+  // Step cap: the job's resolved value wins; jobs created before this
+  // field existed (or loaded from an old meta.json) fall back to config.
+  const steps = (job.max_model_steps !== null && job.max_model_steps !== undefined)
+    ? job.max_model_steps
+    : configMaxModelSteps();
+  if (steps > 0) {
+    args.push('--max-model-steps', String(steps));
   }
   if (config.use_workspace_flag) {
     args.push('--workspace', job.workdir);
@@ -792,6 +828,7 @@ function writeMeta(job) {
     mode: job.mode,
     model: job.model ?? null,
     effort: job.effort ?? null,
+    max_model_steps: job.max_model_steps ?? null,
     exit_code: job.exitCode,
     approval_blocked: job.approvalBlocked,
     started_at: job.startedAt,
@@ -820,6 +857,7 @@ function loadJobFromDisk(id) {
       mode: meta.mode,
       model: meta.model ?? null,
       effort: meta.effort ?? null,
+      max_model_steps: meta.max_model_steps ?? null,
       exitCode: meta.exit_code,
       approvalBlocked: meta.approval_blocked,
       startedAt: meta.started_at,
@@ -843,6 +881,7 @@ function jobPublic(job) {
     mode: job.mode,
     model: job.model ?? null,
     effort: job.effort ?? null,
+    max_model_steps: job.max_model_steps ?? null,
     exit_code: job.exitCode,
     approval_blocked: job.approvalBlocked,
     output: job.output || '',
@@ -867,7 +906,7 @@ function appendOutput(job, chunk) {
   if (APPROVAL_MARKERS.test(text)) job.approvalBlocked = true;
 }
 
-async function createJob({ prompt, workdir, attachments, mode, model, effort }) {
+async function createJob({ prompt, workdir, attachments, mode, model, effort, max_model_steps }) {
   const id = newJobId();
   const p = jobPaths(id);
   fs.mkdirSync(p.dir, { recursive: true });
@@ -884,6 +923,7 @@ async function createJob({ prompt, workdir, attachments, mode, model, effort }) 
     mode: mode || config.mode,
     model: model ?? null,
     effort: effort ?? null,
+    max_model_steps: max_model_steps ?? null,
     exitCode: null,
     approvalBlocked: false,
     output: '',
@@ -895,7 +935,7 @@ async function createJob({ prompt, workdir, attachments, mode, model, effort }) 
   };
   jobs.set(id, job);
   writeMeta(job);
-  log(`[job ${id}] created (mode=${job.mode}, model=${job.model ?? '-'}, effort=${job.effort ?? '-'}, workdir=${workdir})`);
+  log(`[job ${id}] created (mode=${job.mode}, model=${job.model ?? '-'}, effort=${job.effort ?? '-'}, max_model_steps=${job.max_model_steps ?? '-'}, workdir=${workdir})`);
 
   const museBin = await resolveMuseBin();
   if (!museBin) {
@@ -1388,7 +1428,10 @@ async function handleCreateJob(req, res) {
   // Per-job model/effort override (validated; falls back to config defaults).
   const me = resolveModelEffort(body, configModelEffort());
   if (me.error) return sendError(res, 400, me.error);
-  const job = await createJob({ prompt, workdir, attachments, mode, model: me.model, effort: me.effort });
+  // Per-job step cap override (validated; falls back to config default).
+  const steps = resolveMaxModelSteps(body, configMaxModelSteps());
+  if (steps.error) return sendError(res, 400, steps.error);
+  const job = await createJob({ prompt, workdir, attachments, mode, model: me.model, effort: me.effort, max_model_steps: steps });
   sendJson(res, 202, { job_id: job.id });
 }
 

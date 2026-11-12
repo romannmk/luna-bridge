@@ -225,7 +225,7 @@ tmux attach -t luna-<id>
 | `ask-me` | `--approval-mode on-request --approval-judge off` | Каждое подтверждение — пользователю; в headless-режиме задание встанет и мост отметит `approval_blocked: true` |
 | `read-only` | `--disable-write --disable-shell` | Только чтение |
 
-Плюс к каждому запуску: `--trust-workspace` и `--max-model-steps <cap>`, если кап задан.
+Плюс к каждому запуску: `--trust-workspace` и `--max-model-steps <cap>`, если кап задан (по умолчанию `300`; `max_model_steps` в теле `POST /jobs` переопределяет его для одного запуска, `0` = без капа). Полный шаблон headless-запуска: `muse exec <флаги режима> --trust-workspace --model <ID> --reasoning-effort <TIER> --max-model-steps <N> --workspace <workdir> --prompt-file <job>/prompt.txt`. Если кап сработал, `muse exec` завершается с кодом `1`, а задание помечается `failed` — это работа капа, а не сбой: сузь задачу или подними кап и запусти снова.
 
 ### Ключи конфигурации
 
