@@ -139,18 +139,24 @@ const DEFAULTS = {
   // Used only by shared interactive sessions; headless jobs never touch tmux.
   tmux_bin: 'tmux',
   // Extra args appended to every `muse exec` invocation (after mode flags).
-  // Examples: ["--model", "muse-spark-1.3"] — see README for verified flags.
+  // Examples: ["--model", "muse-ember-1.0"] — see README for verified flags.
   muse_args: [],
   // Current permission mode for subsequently started jobs.
   // One of: "ask-me" | "auto-review" | "unrestricted" | "read-only"
   mode: 'auto-review',
-  // Default model for runs (null = leave unset, let Muse Code decide).
-  // Free-form model id, e.g. "muse-spark-1.3". Per-request `model` overrides it.
-  default_model: null,
-  // Default reasoning effort tier for runs (null = leave unset; Muse Code
-  // default `high` applies). One of EFFORTS below. Per-request `effort`
-  // overrides it.
-  default_effort: null,
+  // Default model for runs. Cheap by default: Muse Ember (muse-ember-1.0)
+  // is Meta's smallest model, built for routine, repeatable work — about
+  // 40x cheaper per token than Wonder Full — so a mechanical task can no
+  // longer burn the whole weekly allowance. A null/absent value falls back
+  // to this shipped default; it does NOT mean "let Muse Code decide".
+  // Set an explicit model id for the frontier default, e.g.
+  // "muse-wonder-full-1.0". Per-request `model` overrides it.
+  default_model: 'muse-ember-1.0',
+  // Default reasoning effort tier for runs. `medium` keeps routine work
+  // cheap; Muse Code's own default is `high`. A null/absent value falls
+  // back to this shipped default. One of EFFORTS below. Per-request
+  // `effort` overrides it.
+  default_effort: 'medium',
   // Also write the mode into ~/.config/muse/settings.json
   // (permissions.default_profile) when POST /mode is called. Default off:
   // changing the user's interactive Muse Code settings is opt-in.
@@ -694,10 +700,18 @@ function resolveModelEffort(body, defaults) {
 }
 
 function configModelEffort() {
+  // A null/absent/invalid config value falls back to the shipped default
+  // (DEFAULTS), not to "unset": an old config.json with explicit nulls
+  // must not silently keep the expensive behaviour.
+  const fallbackModel = (typeof DEFAULTS.default_model === 'string' && DEFAULTS.default_model.trim() !== '')
+    ? DEFAULTS.default_model
+    : null;
   const model = (typeof config.default_model === 'string' && config.default_model.trim() !== '')
     ? config.default_model
-    : null;
-  const effort = EFFORTS.includes(config.default_effort) ? config.default_effort : null;
+    : fallbackModel;
+  const effort = EFFORTS.includes(config.default_effort)
+    ? config.default_effort
+    : (EFFORTS.includes(DEFAULTS.default_effort) ? DEFAULTS.default_effort : null);
   return { model, effort };
 }
 

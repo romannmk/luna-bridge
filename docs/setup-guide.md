@@ -274,9 +274,10 @@ through separate PRs.
   ultra`, passed as `--reasoning-effort <TIER>`; an invalid value gets a
   `400`.
 
-Defaults come from `default_model` / `default_effort` in config (both
-`null` by default — no flag is passed and Muse Code decides). The
-effective values are recorded in `meta.json` and returned in statuses.
+Defaults come from `default_model` / `default_effort` in config
+(`muse-ember-1.0` / `medium` by default — cheap by default; a `null`
+value falls back to these defaults instead of leaving the flags unset).
+The effective values are recorded in `meta.json` and returned in statuses.
 
 ## API reference
 
@@ -364,7 +365,7 @@ cancel it (`POST /jobs/:id/cancel`) and read
 | `data_dir` | `<server-dir>/data` | Holds `inbox/`, `jobs/`, `sessions/` |
 | `default_workdir` | `null` | Working directory for jobs that omit `workdir` |
 | `allowed_workdirs` | `null` | Optional array of absolute paths; when set and non-empty, jobs/sessions may only start in/under these dirs (else 403). Start directory only — the agent runs as your user and can `cd` elsewhere; see "Security" |
-| `default_model`, `default_effort` | `null` | Default model and effort tier |
+| `default_model`, `default_effort` | `"muse-ember-1.0"`, `"medium"` | Default model and effort tier (cheap by default; `null` falls back to these) |
 | `token` | `null` | Bearer token; `null` = env `LUNA_BRIDGE_TOKEN`, else the token file, else generate |
 | `token_file` | `~/.config/luna-bridge/token` | Where a generated token is stored (0600) |
 | `muse_bin` | `muse` | Path to the Muse Code binary |

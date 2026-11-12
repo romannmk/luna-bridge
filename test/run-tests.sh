@@ -328,8 +328,8 @@ done
 AFTER="$(curl -s -H "$AUTH" "$BASE/jobs/$JOB_ID")"
 contains "job survives restart (from disk)" '"status":"done"' "$AFTER"
 contains "restarted job keeps output" 'fake-muse: step 3/3 done' "$AFTER"
-contains "restarted job keeps null model (unset run)" '"model":null' "$AFTER"
-contains "restarted job keeps null effort (unset run)" '"effort":null' "$AFTER"
+contains "restarted job keeps default model (unset run)" '"model":"muse-ember-1.0"' "$AFTER"
+contains "restarted job keeps default effort (unset run)" '"effort":"medium"' "$AFTER"
 AFTERME="$(curl -s -H "$AUTH" "$BASE/jobs/$MEJOB_ID")"
 contains "restarted model/effort job keeps model" '"model":"muse-spark-1.3"' "$AFTERME"
 contains "restarted model/effort job keeps effort" '"effort":"low"' "$AFTERME"
@@ -400,6 +400,47 @@ done
 contains "override effort flag reaches muse" '--reasoning-effort low' "$OSTATUS"
 contains "override effort reported" '"effort":"low"' "$OSTATUS"
 contains "default model still applies on override" '--model muse-wonder-1.0' "$OSTATUS"
+
+# --- 9d. config nulls fall back to the shipped cheap default ---------------
+# An old config.json with explicit nulls (e.g. a pre-Ember install) must
+# NOT silently keep the expensive behaviour: null falls back to
+# muse-ember-1.0 / medium instead of leaving the flags unset.
+cat > "$TMP/config.json" <<EOF
+{
+  "port": $PORT,
+  "bind_host": "127.0.0.1",
+  "data_dir": "$TMP/data",
+  "default_workdir": "$TMP/work",
+  "muse_bin": "$ROOT/test/fake-muse.sh",
+  "mode": "unrestricted",
+  "max_model_steps": 0,
+  "default_model": null,
+  "default_effort": null
+}
+EOF
+kill $SERVER_PID 2>/dev/null
+sleep 0.5
+node "$ROOT/server.js" > "$TMP/server4.log" 2>&1 &
+SERVER_PID=$!
+i=0
+until curl -s "$BASE/health" >/dev/null 2>&1; do
+  i=$((i + 1)); [ "$i" -gt 50 ] && { echo "FAIL: server did not restart with null defaults"; cat "$TMP/server4.log"; exit 1; }
+  sleep 0.2
+done
+NJOB="$(curl -s -X POST -H "$AUTH" -H 'Content-Type: application/json' -d "{\"prompt\": \"tiny hello\", \"workdir\": \"$TMP/work\"}" "$BASE/jobs")"
+NJOB_ID="$(echo "$NJOB" | sed -n 's/.*"job_id": *"\([^"]*\)".*/\1/p')"
+i=0
+while [ "$i" -lt 50 ]; do
+  NSTATUS="$(curl -s -H "$AUTH" "$BASE/jobs/$NJOB_ID")"
+  case "$NSTATUS" in
+    *'"status":"done"'*|*'"status":"failed"'*) break ;;
+  esac
+  i=$((i + 1)); sleep 0.2
+done
+contains "null default model falls back to ember" '--model muse-ember-1.0' "$NSTATUS"
+contains "null default effort falls back to medium" '--reasoning-effort medium' "$NSTATUS"
+contains "null default model reported" '"model":"muse-ember-1.0"' "$NSTATUS"
+contains "null default effort reported" '"effort":"medium"' "$NSTATUS"
 
 # --- 10. job list -------------------------------------------------------------
 LIST="$(curl -s -H "$AUTH" "$BASE/jobs")"

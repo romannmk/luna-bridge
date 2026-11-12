@@ -289,7 +289,7 @@ way.
 **Model and effort, per run.** Both `POST /jobs` and `POST /sessions`
 accept optional `model` and `effort`:
 
-- `model`: free-form model id (e.g. `muse-spark-1.3`, `muse-wonder-1.0`,
+- `model`: free-form model id (e.g. `muse-ember-1.0`, `muse-spark-1.3`,
   `muse-wonder-full-1.0`); must be a non-empty string, else 400. Passed
   as `--model <ID>`.
 - `effort`: one of `none|minimal|low|medium|high|xhigh|max|ultra`, else
@@ -297,9 +297,12 @@ accept optional `model` and `effort`:
   `muse exec --help` accept `--model` and `--reasoning-effort`, alias
   `--effort`).
 - Omitted or `null` falls back to `default_model` / `default_effort`
-  (both default to `null` = Muse Code decides; its effort default is
-  `high`). Per-request values win. The effective values are recorded in
-  the job/session `meta.json` and returned by the GET endpoints.
+  (defaults: `muse-ember-1.0` / `medium` — cheap by default, so routine
+  work doesn't burn the weekly allowance; the frontier model stays one
+  per-request `model` away). A `null` config value falls back to the
+  shipped default instead of leaving the flags unset. Per-request values
+  win. The effective values are recorded in the job/session `meta.json`
+  and returned by the GET endpoints.
 
 Other verified `muse exec` flags: `--json`, `--prompt-file <path>`,
 `--session-id <uuid>`, `--no-session-log`. Exit codes: `0` done, `1`
@@ -446,10 +449,10 @@ example.
 | `token_file` | `~/.config/luna-bridge/token` | Where a generated token is stored (0600) |
 | `muse_bin` | `"muse"` | Agent CLI binary (Muse Code today; a full path or wrapper script also works). Resolved via `which` at startup, logged |
 | `tmux_bin` | `"tmux"` | tmux binary for shared sessions (resolved via `which` at startup, logged). Headless jobs never touch tmux |
-| `muse_args` | `[]` | Extra args appended to every `muse exec` call (after the mode flags), e.g. `["--model", "muse-spark-1.3"]` |
+| `muse_args` | `[]` | Extra args appended to every `muse exec` call (after the mode flags), e.g. `["--model", "muse-ember-1.0"]` |
 | `mode` | `"auto-review"` | Permission mode for new jobs (see [Permission modes](#permission-modes)) |
-| `default_model` | `null` | Default model id (e.g. `"muse-spark-1.3"`). `null` = Muse Code decides. Per-request `model` overrides it |
-| `default_effort` | `null` | Default effort tier (`none\|minimal\|low\|medium\|high\|xhigh\|max\|ultra`). `null` = Muse Code decides (`high`). Per-request `effort` overrides it |
+| `default_model` | `"muse-ember-1.0"` | Default model id. `null`/absent = shipped default (Ember — cheap by default). Set e.g. `"muse-wonder-full-1.0"` for the frontier default. Per-request `model` overrides it |
+| `default_effort` | `"medium"` | Default effort tier (`none\|minimal\|low\|medium\|high\|xhigh\|max\|ultra`). `null`/absent = shipped default (`medium`; Muse Code's own default is `high`). Per-request `effort` overrides it |
 | `sync_muse_settings` | `false` | If `true`, `POST /mode` also writes `permissions.default_profile` into `~/.config/muse/settings.json` (opt-in). Writes the colon-prefixed profile id (e.g. `:auto-review`), as Muse Code itself does — see [Permission modes](#permission-modes) |
 | `keep_awake` | `false` | macOS only: hold an idle-sleep assertion (`caffeinate -i -w <pid>`) while the bridge runs. No idle sleep while up — mind battery/heat |
 | `max_model_steps` | `300` | Cap on model steps per job (`0` = no cap). Prevents runaway quota burn |

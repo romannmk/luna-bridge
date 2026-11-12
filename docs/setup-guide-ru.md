@@ -190,9 +190,9 @@ tmux attach -t luna-<id>
 `POST /jobs` и `POST /sessions` принимают необязательные поля:
 
 - `model` — свободный id модели, передаётся как `--model <ID>` (например, тяжёлая задача — на старшей модели, быстрая проверка — на лёгкой).
-- `effort` — один из `none | minimal | low | medium | high | xhigh | max | ultra`, передаётся как `--reasoning-effort <TIER>`; по умолчанию `high`. Невалидное значение — `400`.
+- `effort` — один из `none | minimal | low | medium | high | xhigh | max | ultra`, передаётся как `--reasoning-effort <TIER>`; по умолчанию `medium` (дефолт моста; у самого Muse Code — `high`). Невалидное значение — `400`.
 
-Дефолты задаются ключами `default_model` / `default_effort` в конфиге (по умолчанию `null` — флаг не передаётся, решает Muse Code). Эффективные значения пишутся в `meta.json` и возвращаются в статусах.
+Дефолты задаются ключами `default_model` / `default_effort` в конфиге (по умолчанию `muse-ember-1.0` / `medium` — дёшево по умолчанию; `null` откатывается к этим дефолтам, а не к решению Muse Code). Эффективные значения пишутся в `meta.json` и возвращаются в статусах.
 
 ## Справочник API
 
@@ -235,7 +235,7 @@ tmux attach -t luna-<id>
 | `bind_host` | `null` | Явный IP для бинда; `null` — автодетект (сейчас — Tailscale, см. ниже) |
 | `data_dir` | `<папка сервера>/data` | `inbox/` и `jobs/` |
 | `default_workdir` | `null` | Папка заданий без явного `workdir` |
-| `default_model`, `default_effort` | `null` | Дефолтные модель и усилие |
+| `default_model`, `default_effort` | `"muse-ember-1.0"`, `"medium"` | Дефолтные модель и усилие (дёшево по умолчанию; `null` откатывается к ним) |
 | `token` | `null` | Токен; `null` — env `LUNA_BRIDGE_TOKEN`, иначе файл токена, иначе генерация |
 | `token_file` | `~/.config/luna-bridge/token` | Где хранится сгенерированный токен (0600) |
 | `muse_bin` | `muse` | Путь к бинарю Muse Code |

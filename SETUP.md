@@ -104,11 +104,14 @@ Edit `config.json` (it is gitignored — it never leaves your machine):
   also write `permissions.default_profile` in
   `~/.config/muse/settings.json`. It writes the colon-prefixed profile
   id (`:auto-review`), the same form Muse Code itself uses.
-- `default_model` / `default_effort`: leave both at `null` (unset) unless
-  you want every run to use a specific model or effort tier. Luna can also
-  set them per run (`model`, `effort` fields on `POST /jobs` and
-  `POST /sessions`); per-request values win. See README for the effort
-  enum and example model ids.
+- `default_model` / `default_effort`: both default to cheap —
+  `muse-ember-1.0` / `medium` — so routine work doesn't burn the weekly
+  allowance. Leave them to keep it that way; set a frontier model (e.g.
+  `muse-wonder-full-1.0`) only if you want every run on the expensive
+  model. A `null` value falls back to the shipped default (it does not
+  skip the flags). Luna can also set them per run (`model`, `effort`
+  fields on `POST /jobs` and `POST /sessions`); per-request values win.
+  See README for the effort enum and example model ids.
 - `muse_bin`: `"muse"` is fine if `muse` is on your PATH. If the bridge
   cannot find it, put the full path here.
 - `keep_awake`: leave at `false` for the first run. Set it to `true`
@@ -235,8 +238,9 @@ model/effort flags `--model <ID>` and `--reasoning-effort <TIER>`
 (effort tiers: `none|minimal|low|medium|high|xhigh|max|ultra`). If any of
 them is rejected, set the matching option in `config.json`
 (`prompt_via_file: false`, `use_workspace_flag: false`, or adjust
-`muse_args`; leave `default_model`/`default_effort` as `null` to skip
-those flags entirely) and restart the server.
+`muse_args`) and restart the server. (The bridge always passes
+`--model` / `--reasoning-effort` now — a `null` default falls back to
+Ember / `medium` instead of skipping the flags.)
 
 ## Shared sessions: attaching from your terminal
 
@@ -320,7 +324,7 @@ This is the full breakdown behind the summary in README.md ("Testing").
 On a machine without Muse Code, the suite uses a fake `muse` executable:
 
 ```sh
-sh test/run-tests.sh   # 260 checks: health, auth, upload, jobs, model/effort, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, luna-bridge CLI, --foreground, allowed_workdirs
+sh test/run-tests.sh   # 258 checks: health, auth, upload, jobs, model/effort, cancel, mode, sessions, 400s, bind_mode transports, keep_awake, luna-bridge CLI, --foreground, allowed_workdirs
 ```
 
 What is tested: health (no auth), 401 on missing/wrong token, upload (201,
